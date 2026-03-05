@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpStatus;
@@ -49,6 +50,9 @@ class OrderServiceImplTest {
         inventoryResponse.setProductId("p1");
         inventoryResponse.setProductQuantity(10);
         inventoryResponse.setPrice(5000.0);
+
+        ReflectionTestUtils.setField(orderService, "inventoryUrl", "http://localhost:8081/api/products");
+        ReflectionTestUtils.setField(orderService, "walletUrl", "http://localhost:8082/api/wallets");
     }
 
     @Test
@@ -137,5 +141,26 @@ class OrderServiceImplTest {
                 orderService.createOrder(order)
         );
         assertEquals("Stok barang tidak mencukupi!", exception.getMessage());
+    }
+
+    @Test
+    void testCreateOrder_ProductIdNull() {
+        order.setProductId(null);
+        order.setUserId("user-123");
+        Exception exception = assertThrows(IllegalArgumentException.class, () ->
+                orderService.createOrder(order)
+        );
+        assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
+    }
+
+    @Test
+    void testCreateOrder_UserIdNull() {
+        order.setProductId("prod-123");
+        order.setUserId(null);
+
+        Exception exception = assertThrows(IllegalArgumentException.class, () ->
+                orderService.createOrder(order)
+        );
+        assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
     }
 }

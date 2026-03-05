@@ -5,9 +5,11 @@ import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.List;
 
@@ -20,14 +22,24 @@ public class OrderServiceImpl implements OrderService {
     @Autowired
     private RestTemplate restTemplate;
 
-    private final String INVENTORY_URL = "http://localhost:8081/api/products";
-    private final String WALLET_URL = "http://localhost:8082/api/wallets";
+    @Value("${order.inventory.url}")
+    private String inventoryUrl;
+
+    @Value("${order.wallet.url}")
+    private String walletUrl;
 
     @Override
     public Order createOrder(Order order) {
-        String productUrl = INVENTORY_URL + "/" + order.getProductId();
-        InventoryResponse product;
+        // 1. Validasi Input Dasar (Cegah input kosong/aneh)
+        if (order.getProductId() == null || order.getUserId() == null) {
+            throw new IllegalArgumentException("Product ID dan User ID tidak boleh kosong");
+        }
 
+        String productUrl = UriComponentsBuilder.fromHttpUrl(inventoryUrl)
+                .pathSegment(order.getProductId())
+                .toUriString();
+
+        InventoryResponse product;
         try {
             product = restTemplate.getForObject(productUrl, InventoryResponse.class);
         } catch (HttpClientErrorException e) {
@@ -40,19 +52,26 @@ public class OrderServiceImpl implements OrderService {
 
         Double totalPrice = product.getPrice() * order.getJumlah();
 
-        String walletUrl = WALLET_URL + "/" + order.getUserId() + "/debit?amount=" + totalPrice;
+        String userWalletUrl = UriComponentsBuilder.fromHttpUrl(walletUrl)
+                .pathSegment(order.getUserId(), "debit")
+                .queryParam("amount", totalPrice)
+                .toUriString();
 
         try {
-            restTemplate.put(walletUrl, null);
+            restTemplate.put(userWalletUrl, null);
         } catch (HttpClientErrorException e) {
             throw new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!");
         }
 
-        String reduceStockUrl = INVENTORY_URL + "/" + order.getProductId() + "/reduce-stock?quantity=" + order.getJumlah();
+        String reduceStockUrl = UriComponentsBuilder.fromHttpUrl(inventoryUrl)
+                .pathSegment(order.getProductId(), "reduce-stock")
+                .queryParam("quantity", order.getJumlah())
+                .toUriString();
 
         try {
             restTemplate.put(reduceStockUrl, null);
         } catch (HttpClientErrorException e) {
+            // Rollback logika manual bisa ditambahkan di sini jika perlu
             throw new RuntimeException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Hubungi Admin.");
         }
 
