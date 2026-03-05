@@ -12,21 +12,6 @@ jobs:
     name: Run Tests & Linter
     runs-on: ubuntu-22.04
 
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: orderdb
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,9 +31,12 @@ jobs:
       - name: Run Tests & Checkstyle
         run: ./gradlew clean test checkstyleMain checkstyleTest
         env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/orderdb
-          SPRING_DATASOURCE_USERNAME: ${{ secrets.POSTGRES_USER }}
-          SPRING_DATASOURCE_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SPRING_DATASOURCE_URL: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+          SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.h2.Driver
+          SPRING_DATASOURCE_USERNAME: sa
+          SPRING_DATASOURCE_PASSWORD:
+          SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.H2Dialect
+          SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
 
       - name: SonarCloud Scan
         run: ./gradlew sonar
