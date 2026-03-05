@@ -12,6 +12,9 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    private String productId;
+    private String userId;
+
     private Integer jumlah;
     private String alamatPengiriman;
 
