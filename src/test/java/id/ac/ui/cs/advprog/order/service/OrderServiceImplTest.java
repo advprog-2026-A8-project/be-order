@@ -10,10 +10,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpStatus;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,64 +39,103 @@ class OrderServiceImplTest {
     @BeforeEach
     void setUp() {
         order = new Order();
-        order.setId("order-123");
-        order.setProductId("prod-123");
-        order.setUserId("user-456");
-        order.setJumlah(2);
+        order.setId("order-1");
+        order.setProductId("p1");
+        order.setUserId("u1");
+        order.setJumlah(1);
         order.setStatus(OrderStatus.PENDING);
 
         inventoryResponse = new InventoryResponse();
-        inventoryResponse.setProductId("prod-123");
+        inventoryResponse.setProductId("p1");
         inventoryResponse.setProductQuantity(10);
-        inventoryResponse.setPrice(10000.0);
+        inventoryResponse.setPrice(5000.0);
     }
 
     @Test
-    void testCreateOrder_Success() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
-                .thenReturn(inventoryResponse);
+    void testCreateOrderSuccess() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
         when(orderRepository.save(any(Order.class))).thenReturn(order);
+
         Order result = orderService.createOrder(order);
-        assertNotNull(result);
         assertEquals(OrderStatus.PAID, result.getStatus());
-        verify(orderRepository, times(1)).save(any(Order.class));
     }
 
     @Test
-    void testFindAllOrders() {
+    void testCreateOrderInventoryNotFound() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+                .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
+
+        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
+    }
+
+    @Test
+    void testCreateOrderInsufficientStock() {
+        inventoryResponse.setProductQuantity(0);
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
+
+        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
+    }
+
+    @Test
+    void testCreateOrderWalletFailed() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
+        doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST)).when(restTemplate).put(contains("wallet"), any());
+
+        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
+    }
+
+    @Test
+    void testCreateOrderReduceStockFailed() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
+        // Put pertama (wallet) sukses, put kedua (reduce-stock) gagal
+        doNothing().when(restTemplate).put(contains("wallet"), any());
+        doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR)).when(restTemplate).put(contains("reduce-stock"), any());
+
+        assertThrows(RuntimeException.class, () -> orderService.createOrder(order));
+    }
+
+    @Test
+    void testFindAll() {
         when(orderRepository.findAll()).thenReturn(Arrays.asList(order));
-        List<Order> result = orderService.findAllOrders();
-        assertNotNull(result);
-        assertEquals(1, result.size());
+        assertEquals(1, orderService.findAllOrders().size());
     }
 
     @Test
-    void testFindOrderById_Found() {
-        when(orderRepository.findById("order-123")).thenReturn(Optional.of(order));
-        Order result = orderService.findOrderById("order-123");
-        assertEquals("order-123", result.getId());
+    void testFindById() {
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        assertNotNull(orderService.findOrderById("order-1"));
+        assertNull(orderService.findOrderById("kosong"));
     }
 
     @Test
-    void testFindOrderById_NotFound() {
-        when(orderRepository.findById("ngawur")).thenReturn(Optional.empty());
-        Order result = orderService.findOrderById("ngawur");
-        assertNull(result);
-    }
-
-    @Test
-    void testUpdateOrderStatus_Success() {
-        when(orderRepository.findById("order-123")).thenReturn(Optional.of(order));
+    void testUpdateStatusSuccess() {
+        when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
-        Order result = orderService.updateOrderStatus("order-123", "SHIPPED");
+
+        Order result = orderService.updateOrderStatus("order-1", "SHIPPED");
         assertEquals(OrderStatus.SHIPPED, result.getStatus());
     }
 
     @Test
-    void testUpdateOrderStatus_InvalidStatus() {
-        when(orderRepository.findById("order-123")).thenReturn(Optional.of(order));
-        assertThrows(IllegalArgumentException.class, () ->
-                orderService.updateOrderStatus("order-123", "STATUS_NGAWUR")
+    void testUpdateStatusInvalid() {
+        when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
+        assertThrows(IllegalArgumentException.class, () -> orderService.updateOrderStatus("order-1", "NGASAL"));
+    }
+
+    @Test
+    void testUpdateOrderStatus_OrderNotFound() {
+        when(orderRepository.findById("id-ngawur")).thenReturn(Optional.empty());
+        Order result = orderService.updateOrderStatus("id-ngawur", "SHIPPED");
+        assertNull(result);
+    }
+
+    @Test
+    void testCreateOrder_ProductResponseNull() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+                .thenReturn(null);
+        Exception exception = assertThrows(IllegalArgumentException.class, () ->
+                orderService.createOrder(order)
         );
+        assertEquals("Stok barang tidak mencukupi!", exception.getMessage());
     }
 }

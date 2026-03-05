@@ -8,6 +8,11 @@ class OrderApplicationTests {
 
     @Test
     void contextLoads() {
+        //
     }
 
+    @Test
+    void testMain() {
+        OrderApplication.main(new String[] {});
+    }
 }
