@@ -4,6 +4,7 @@ import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,13 +15,11 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
-    @Autowired
-    private OrderRepository orderRepository;
-
-    @Autowired
-    private RestTemplate restTemplate;
+    private final OrderRepository orderRepository;
+    private final RestTemplate restTemplate;
 
     @Value("${order.inventory.url}")
     private String inventoryUrl;
@@ -30,12 +29,11 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order createOrder(Order order) {
-        // 1. Validasi Input Dasar (Cegah input kosong/aneh)
         if (order.getProductId() == null || order.getUserId() == null) {
             throw new IllegalArgumentException("Product ID dan User ID tidak boleh kosong");
         }
 
-        String productUrl = UriComponentsBuilder.fromHttpUrl(inventoryUrl)
+        String productUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
                 .pathSegment(order.getProductId())
                 .toUriString();
 
@@ -52,7 +50,7 @@ public class OrderServiceImpl implements OrderService {
 
         Double totalPrice = product.getPrice() * order.getJumlah();
 
-        String userWalletUrl = UriComponentsBuilder.fromHttpUrl(walletUrl)
+        String userWalletUrl = UriComponentsBuilder.fromUriString(walletUrl)
                 .pathSegment(order.getUserId(), "debit")
                 .queryParam("amount", totalPrice)
                 .toUriString();
@@ -63,7 +61,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!");
         }
 
-        String reduceStockUrl = UriComponentsBuilder.fromHttpUrl(inventoryUrl)
+        String reduceStockUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
                 .pathSegment(order.getProductId(), "reduce-stock")
                 .queryParam("quantity", order.getJumlah())
                 .toUriString();
@@ -71,8 +69,7 @@ public class OrderServiceImpl implements OrderService {
         try {
             restTemplate.put(reduceStockUrl, null);
         } catch (HttpClientErrorException e) {
-            // Rollback logika manual bisa ditambahkan di sini jika perlu
-            throw new RuntimeException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Hubungi Admin.");
+            throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Hubungi Admin.");
         }
 
         order.setStatus(OrderStatus.PAID);

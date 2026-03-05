@@ -91,7 +91,6 @@ class OrderServiceImplTest {
     @Test
     void testCreateOrderReduceStockFailed() {
         when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        // Put pertama (wallet) sukses, put kedua (reduce-stock) gagal
         doNothing().when(restTemplate).put(contains("wallet"), any());
         doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR)).when(restTemplate).put(contains("reduce-stock"), any());
 
