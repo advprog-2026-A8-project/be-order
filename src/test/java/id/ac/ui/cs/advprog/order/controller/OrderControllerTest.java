@@ -3,7 +3,7 @@ package id.ac.ui.cs.advprog.order.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
-import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +25,7 @@ class OrderControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private OrderRepository orderRepository;
+    private OrderService orderService;
 
     private Order order;
 
@@ -42,7 +42,7 @@ class OrderControllerTest {
 
     @Test
     void testCheckoutSuccess() throws Exception {
-        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(orderService.createOrder(any(Order.class))).thenReturn(order);
 
         ObjectMapper objectMapper = new ObjectMapper();
         String jsonRequest = objectMapper.writeValueAsString(order);
