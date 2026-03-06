@@ -19,7 +19,7 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/checkout")
-    public ResponseEntity<Order> checkout(@RequestBody Order orderRequest) {
+    public ResponseEntity<Order> checkout(@RequestBody OrderRequest orderRequest) {
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
         order.setUserId(orderRequest.getUserId());
