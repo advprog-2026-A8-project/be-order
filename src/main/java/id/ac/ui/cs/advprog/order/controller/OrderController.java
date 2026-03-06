@@ -1,5 +1,7 @@
 package id.ac.ui.cs.advprog.order.controller;
 
+import id.ac.ui.cs.advprog.order.dto.OrderRequest;
+import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +20,14 @@ public class OrderController {
 
     @PostMapping("/checkout")
     public ResponseEntity<Order> checkout(@RequestBody Order orderRequest) {
-        Order savedOrder = orderService.createOrder(orderRequest);
+        Order order = new Order();
+        order.setProductId(orderRequest.getProductId());
+        order.setUserId(orderRequest.getUserId());
+        order.setJumlah(orderRequest.getJumlah());
+        order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
+        order.setStatus(OrderStatus.PENDING);
+
+        Order savedOrder = orderService.createOrder(order);
         return ResponseEntity.ok(savedOrder);
     }
 
