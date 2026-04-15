@@ -7,6 +7,7 @@ import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
+import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStateMachine orderStateMachine;
     private final OrderCheckoutFacade orderCheckoutFacade;
     private final WalletGateway walletGateway;
+    private final ProfileGateway profileGateway;
 
     private static final List<OrderStatus> ACTIVE_STATUSES = List.of(
             OrderStatus.PENDING,
@@ -27,6 +29,9 @@ public class OrderServiceImpl implements OrderService {
             OrderStatus.PURCHASED,
             OrderStatus.SHIPPED
     );
+    private static final List<OrderStatus> JASTIPER_TODO_STATUSES = List.of(OrderStatus.PAID);
+    private static final List<OrderStatus> JASTIPER_PROCESSING_STATUSES = List.of(OrderStatus.PURCHASED, OrderStatus.SHIPPED);
+    private static final List<OrderStatus> JASTIPER_COMPLETED_STATUSES = List.of(OrderStatus.COMPLETED, OrderStatus.CANCELLED);
 
     @Override
     public Order createOrder(Order order) {
@@ -90,7 +95,65 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public List<Order> findTitiperOrderHistory(String userId) {
+        return orderRepository.findByUserId(userId);
+    }
+
+    @Override
+    public List<Order> findJastiperTodoOrders(String jastiperId) {
+        return orderRepository.findByJastiperIdAndStatusIn(jastiperId, JASTIPER_TODO_STATUSES);
+    }
+
+    @Override
+    public List<Order> findJastiperProcessingOrders(String jastiperId) {
+        return orderRepository.findByJastiperIdAndStatusIn(jastiperId, JASTIPER_PROCESSING_STATUSES);
+    }
+
+    @Override
+    public List<Order> findJastiperCompletedOrders(String jastiperId) {
+        return orderRepository.findByJastiperIdAndStatusIn(jastiperId, JASTIPER_COMPLETED_STATUSES);
+    }
+
+    @Override
     public List<Order> findAdminActiveOrders() {
         return orderRepository.findByStatusIn(ACTIVE_STATUSES);
+    }
+
+    @Override
+    public Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating) {
+        Order order = findOrderById(orderId);
+        if (order == null) {
+            return null;
+        }
+        if (!userId.equals(order.getUserId())) {
+            throw new IllegalArgumentException("User tidak berhak memberi rating untuk order ini");
+        }
+        if (order.getStatus() != OrderStatus.COMPLETED) {
+            throw new IllegalStateException("Rating hanya dapat diberikan setelah order completed");
+        }
+        if (Boolean.TRUE.equals(order.getRatingSubmitted())) {
+            throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
+        }
+        validateRatingRange(jastiperRating, productRating);
+
+        profileGateway.submitRating(
+                order.getId(),
+                order.getUserId(),
+                order.getJastiperId(),
+                order.getProductId(),
+                jastiperRating,
+                productRating
+        );
+
+        order.setJastiperRating(jastiperRating);
+        order.setProductRating(productRating);
+        order.setRatingSubmitted(true);
+        return orderRepository.save(order);
+    }
+
+    private void validateRatingRange(int jastiperRating, int productRating) {
+        if (jastiperRating < 1 || jastiperRating > 5 || productRating < 1 || productRating > 5) {
+            throw new IllegalArgumentException("Rating harus berada pada rentang 1-5");
+        }
     }
 }

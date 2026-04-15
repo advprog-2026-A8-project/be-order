@@ -6,6 +6,7 @@ import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
+import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +41,9 @@ class OrderServiceImplTest {
 
     @Mock
     private WalletGateway walletGateway;
+
+    @Mock
+    private ProfileGateway profileGateway;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -141,5 +147,61 @@ class OrderServiceImplTest {
                 .thenReturn(List.of(order));
 
         assertEquals(1, orderService.findTitiperActiveOrders("user-1").size());
+    }
+
+    @Test
+    void testGetTitiperOrderHistory() {
+        when(orderRepository.findByUserId("user-1")).thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findTitiperOrderHistory("user-1").size());
+    }
+
+    @Test
+    void testGetJastiperTodoOrders() {
+        when(orderRepository.findByJastiperIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findJastiperTodoOrders("jastiper-1").size());
+    }
+
+    @Test
+    void testGetJastiperProcessingOrders() {
+        when(orderRepository.findByJastiperIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findJastiperProcessingOrders("jastiper-1").size());
+    }
+
+    @Test
+    void testGetJastiperCompletedOrders() {
+        when(orderRepository.findByJastiperIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findJastiperCompletedOrders("jastiper-1").size());
+    }
+
+    @Test
+    void testSubmitRatingSuccess() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        Order result = orderService.submitOrderRating("order-1", "user-1", 5, 4);
+
+        assertEquals(5, result.getJastiperRating());
+        assertEquals(4, result.getProductRating());
+        verify(profileGateway).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenOrderNotCompleted() {
+        order.setStatus(OrderStatus.SHIPPED);
+        order.setUserId("user-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalStateException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
     }
 }
