@@ -11,7 +11,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +27,15 @@ public class OrderServiceImpl implements OrderService {
 
     @Value("${order.wallet.url}")
     private String walletUrl;
+
+    private static final Map<OrderStatus, EnumSet<OrderStatus>> VALID_TRANSITIONS = Map.of(
+            OrderStatus.PAID, EnumSet.of(OrderStatus.PURCHASED, OrderStatus.CANCELLED),
+            OrderStatus.PURCHASED, EnumSet.of(OrderStatus.SHIPPED, OrderStatus.CANCELLED),
+            OrderStatus.SHIPPED, EnumSet.of(OrderStatus.COMPLETED, OrderStatus.CANCELLED),
+            OrderStatus.PENDING, EnumSet.of(OrderStatus.PAID, OrderStatus.CANCELLED),
+            OrderStatus.COMPLETED, EnumSet.noneOf(OrderStatus.class),
+            OrderStatus.CANCELLED, EnumSet.noneOf(OrderStatus.class)
+    );
 
     @Override
     public Order createOrder(Order order) {
@@ -68,7 +79,12 @@ public class OrderServiceImpl implements OrderService {
         try {
             restTemplate.put(reduceStockUrl, null);
         } catch (HttpClientErrorException e) {
-            throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Hubungi Admin.");
+            String refundUrl = UriComponentsBuilder.fromUriString(walletUrl)
+                    .pathSegment(order.getUserId(), "credit")
+                    .queryParam("amount", totalPrice)
+                    .toUriString();
+            restTemplate.put(refundUrl, null);
+            throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.");
         }
 
         order.setStatus(OrderStatus.PAID);
@@ -91,6 +107,10 @@ public class OrderServiceImpl implements OrderService {
         if (order != null) {
             try {
                 OrderStatus newStatus = OrderStatus.valueOf(status.toUpperCase());
+                if (!VALID_TRANSITIONS.getOrDefault(order.getStatus(), EnumSet.noneOf(OrderStatus.class))
+                        .contains(newStatus)) {
+                    throw new IllegalArgumentException("Invalid transition");
+                }
                 order.setStatus(newStatus);
                 return orderRepository.save(order);
             } catch (IllegalArgumentException e) {
