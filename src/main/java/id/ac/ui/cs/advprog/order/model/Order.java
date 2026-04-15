@@ -19,6 +19,9 @@ public class Order {
     private Integer jumlah;
     private String alamatPengiriman;
     private Double totalAmount;
+    private Integer jastiperRating;
+    private Integer productRating;
+    private Boolean ratingSubmitted = false;
 
     @Enumerated(EnumType.STRING)
     private OrderStatus status = OrderStatus.PENDING;
