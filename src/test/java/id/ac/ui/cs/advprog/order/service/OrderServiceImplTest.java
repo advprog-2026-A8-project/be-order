@@ -115,8 +115,9 @@ class OrderServiceImplTest {
         when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
 
-        Order result = orderService.updateOrderStatus("order-1", "SHIPPED");
-        assertEquals(OrderStatus.SHIPPED, result.getStatus());
+        order.setStatus(OrderStatus.PAID);
+        Order result = orderService.updateOrderStatus("order-1", "PURCHASED");
+        assertEquals(OrderStatus.PURCHASED, result.getStatus());
     }
 
     @Test
@@ -130,6 +131,15 @@ class OrderServiceImplTest {
         when(orderRepository.findById("id-ngawur")).thenReturn(Optional.empty());
         Order result = orderService.updateOrderStatus("id-ngawur", "SHIPPED");
         assertNull(result);
+    }
+
+    @Test
+    void testUpdateStatusInvalidTransitionShouldFail() {
+        when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
+        order.setStatus(OrderStatus.PAID);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                orderService.updateOrderStatus("order-1", "COMPLETED"));
     }
 
     @Test
@@ -161,5 +171,16 @@ class OrderServiceImplTest {
                 orderService.createOrder(order)
         );
         assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
+    }
+
+    @Test
+    void testCreateOrderShouldRefundWhenReduceStockFailed() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
+        doNothing().when(restTemplate).put(contains("debit"), any());
+        doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR))
+                .when(restTemplate).put(contains("reduce-stock"), any());
+
+        assertThrows(IllegalStateException.class, () -> orderService.createOrder(order));
+        verify(restTemplate).put(contains("credit"), any());
     }
 }
