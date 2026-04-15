@@ -1,26 +1,26 @@
 package id.ac.ui.cs.advprog.order.service;
 
-import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpStatus;
 
 import java.util.Arrays;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -29,13 +29,15 @@ class OrderServiceImplTest {
     private OrderRepository orderRepository;
 
     @Mock
-    private RestTemplate restTemplate;
+    private OrderStateMachine orderStateMachine;
+
+    @Mock
+    private OrderCheckoutFacade orderCheckoutFacade;
 
     @InjectMocks
     private OrderServiceImpl orderService;
 
     private Order order;
-    private InventoryResponse inventoryResponse;
 
     @BeforeEach
     void setUp() {
@@ -45,56 +47,15 @@ class OrderServiceImplTest {
         order.setUserId("u1");
         order.setJumlah(1);
         order.setStatus(OrderStatus.PENDING);
-
-        inventoryResponse = new InventoryResponse();
-        inventoryResponse.setProductId("p1");
-        inventoryResponse.setProductQuantity(10);
-        inventoryResponse.setPrice(5000.0);
-
-        ReflectionTestUtils.setField(orderService, "inventoryUrl", "http://localhost:8081/api/products");
-        ReflectionTestUtils.setField(orderService, "walletUrl", "http://localhost:8082/api/wallets");
     }
 
     @Test
-    void testCreateOrderSuccess() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        when(orderRepository.save(any(Order.class))).thenReturn(order);
+    void testCreateOrderDelegatesToFacade() {
+        when(orderCheckoutFacade.checkout(order)).thenReturn(order);
 
         Order result = orderService.createOrder(order);
-        assertEquals(OrderStatus.PAID, result.getStatus());
-    }
 
-    @Test
-    void testCreateOrderInventoryNotFound() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
-                .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
-
-        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
-    }
-
-    @Test
-    void testCreateOrderInsufficientStock() {
-        inventoryResponse.setProductQuantity(0);
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-
-        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
-    }
-
-    @Test
-    void testCreateOrderWalletFailed() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST)).when(restTemplate).put(contains("wallet"), any());
-
-        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
-    }
-
-    @Test
-    void testCreateOrderReduceStockFailed() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        doNothing().when(restTemplate).put(contains("wallet"), any());
-        doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR)).when(restTemplate).put(contains("reduce-stock"), any());
-
-        assertThrows(RuntimeException.class, () -> orderService.createOrder(order));
+        assertEquals("order-1", result.getId());
     }
 
     @Test
@@ -106,7 +67,7 @@ class OrderServiceImplTest {
     @Test
     void testFindById() {
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
-        assertNotNull(orderService.findOrderById("order-1"));
+        assertEquals("order-1", orderService.findOrderById("order-1").getId());
         assertNull(orderService.findOrderById("kosong"));
     }
 
@@ -114,6 +75,7 @@ class OrderServiceImplTest {
     void testUpdateStatusSuccess() {
         when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.PURCHASED)).thenReturn(true);
 
         order.setStatus(OrderStatus.PAID);
         Order result = orderService.updateOrderStatus("order-1", "PURCHASED");
@@ -127,60 +89,19 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void testUpdateOrderStatus_OrderNotFound() {
-        when(orderRepository.findById("id-ngawur")).thenReturn(Optional.empty());
-        Order result = orderService.updateOrderStatus("id-ngawur", "SHIPPED");
-        assertNull(result);
-    }
-
-    @Test
-    void testUpdateStatusInvalidTransitionShouldFail() {
+    void testUpdateStatusInvalidTransition() {
         when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
         order.setStatus(OrderStatus.PAID);
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.COMPLETED)).thenReturn(false);
 
         assertThrows(IllegalArgumentException.class, () ->
                 orderService.updateOrderStatus("order-1", "COMPLETED"));
     }
 
     @Test
-    void testCreateOrder_ProductResponseNull() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
-                .thenReturn(null);
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                orderService.createOrder(order)
-        );
-        assertEquals("Stok barang tidak mencukupi!", exception.getMessage());
-    }
-
-    @Test
-    void testCreateOrder_ProductIdNull() {
-        order.setProductId(null);
-        order.setUserId("user-123");
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                orderService.createOrder(order)
-        );
-        assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
-    }
-
-    @Test
-    void testCreateOrder_UserIdNull() {
-        order.setProductId("prod-123");
-        order.setUserId(null);
-
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                orderService.createOrder(order)
-        );
-        assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
-    }
-
-    @Test
-    void testCreateOrderShouldRefundWhenReduceStockFailed() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        doNothing().when(restTemplate).put(contains("debit"), any());
-        doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR))
-                .when(restTemplate).put(contains("reduce-stock"), any());
-
-        assertThrows(IllegalStateException.class, () -> orderService.createOrder(order));
-        verify(restTemplate).put(contains("credit"), any());
+    void testUpdateOrderStatusOrderNotFound() {
+        when(orderRepository.findById("id-ngawur")).thenReturn(Optional.empty());
+        Order result = orderService.updateOrderStatus("id-ngawur", "SHIPPED");
+        assertNull(result);
     }
 }
