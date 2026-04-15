@@ -22,6 +22,7 @@ public class OrderController {
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
         order.setUserId(orderRequest.getUserId());
+        order.setJastiperId(orderRequest.getJastiperId());
         order.setJumlah(orderRequest.getJumlah());
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
         order.setStatus(OrderStatus.PENDING);
@@ -56,5 +57,28 @@ public class OrderController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
+        try {
+            Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
+            if (cancelledOrder == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(cancelledOrder);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/titiper/{userId}/active")
+    public ResponseEntity<List<Order>> getTitiperActiveOrders(@PathVariable String userId) {
+        return ResponseEntity.ok(orderService.findTitiperActiveOrders(userId));
+    }
+
+    @GetMapping("/admin/active")
+    public ResponseEntity<List<Order>> getAdminActiveOrders() {
+        return ResponseEntity.ok(orderService.findAdminActiveOrders());
     }
 }

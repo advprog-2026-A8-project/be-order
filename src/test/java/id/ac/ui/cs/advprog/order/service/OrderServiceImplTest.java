@@ -5,6 +5,7 @@ import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
+import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,6 +35,9 @@ class OrderServiceImplTest {
 
     @Mock
     private OrderCheckoutFacade orderCheckoutFacade;
+
+    @Mock
+    private WalletGateway walletGateway;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -103,5 +108,38 @@ class OrderServiceImplTest {
         when(orderRepository.findById("id-ngawur")).thenReturn(Optional.empty());
         Order result = orderService.updateOrderStatus("id-ngawur", "SHIPPED");
         assertNull(result);
+    }
+
+    @Test
+    void testCancelOrderByJastiperSuccess() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        Order result = orderService.cancelOrderByJastiper("order-1", "jastiper-1");
+
+        assertEquals(OrderStatus.CANCELLED, result.getStatus());
+    }
+
+    @Test
+    void testCancelOrderByJastiperWrongOwnerShouldFail() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.cancelOrderByJastiper("order-1", "jastiper-2"));
+    }
+
+    @Test
+    void testGetTitiperActiveOrders() {
+        when(orderRepository.findByUserIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findTitiperActiveOrders("user-1").size());
     }
 }

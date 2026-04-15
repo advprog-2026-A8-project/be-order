@@ -94,4 +94,32 @@ class OrderControllerTest {
         mockMvc.perform(patch("/api/orders/order-123/status").param("status", "SALAH"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void testCancelByJastiperSuccess() throws Exception {
+        order.setStatus(OrderStatus.CANCELLED);
+        when(orderService.cancelOrderByJastiper("order-123", "jastiper-1")).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void testGetTitiperActiveOrders() throws Exception {
+        when(orderService.findTitiperActiveOrders("user-def")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/titiper/user-def/active"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetAdminActiveOrders() throws Exception {
+        when(orderService.findAdminActiveOrders()).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/admin/active"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
 }

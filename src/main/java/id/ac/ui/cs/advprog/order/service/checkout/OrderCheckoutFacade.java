@@ -41,6 +41,7 @@ public class OrderCheckoutFacade {
             }
 
             order.setStatus(OrderStatus.PAID);
+            order.setTotalAmount(totalPrice);
             return orderRepository.save(order);
         } finally {
             lock.unlock();

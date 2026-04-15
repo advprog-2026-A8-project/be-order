@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 public class OrderRequest {
     private String productId;
     private String userId;
+    private String jastiperId;
     private Integer jumlah;
     private String alamatPengiriman;
 }
