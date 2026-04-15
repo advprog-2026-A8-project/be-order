@@ -7,10 +7,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class OrderRequest {
-    private String productId;
+public class RatingRequest {
     private String userId;
-    private String jastiperId;
-    private Integer jumlah;
-    private String alamatPengiriman;
+    private Integer jastiperRating;
+    private Integer productRating;
 }

@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -92,6 +93,135 @@ class OrderControllerTest {
     void testUpdateStatusInvalid() throws Exception {
         when(orderService.updateOrderStatus(anyString(), anyString())).thenThrow(new IllegalArgumentException());
         mockMvc.perform(patch("/api/orders/order-123/status").param("status", "SALAH"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testCancelByJastiperSuccess() throws Exception {
+        order.setStatus(OrderStatus.CANCELLED);
+        when(orderService.cancelOrderByJastiper("order-123", "jastiper-1")).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void testCancelByJastiperNotFound() throws Exception {
+        when(orderService.cancelOrderByJastiper("order-123", "jastiper-1")).thenReturn(null);
+
+        mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testCancelByJastiperBadRequest() throws Exception {
+        when(orderService.cancelOrderByJastiper("order-123", "jastiper-1"))
+                .thenThrow(new IllegalArgumentException("forbidden"));
+
+        mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testGetTitiperActiveOrders() throws Exception {
+        when(orderService.findTitiperActiveOrders("user-def")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/titiper/user-def/active"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetAdminActiveOrders() throws Exception {
+        when(orderService.findAdminActiveOrders()).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/admin/active"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetTitiperHistoryOrders() throws Exception {
+        when(orderService.findTitiperOrderHistory("user-def")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/titiper/user-def/history"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetJastiperTodoOrders() throws Exception {
+        when(orderService.findJastiperTodoOrders("jastiper-1")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-1/todo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetJastiperProcessingOrders() throws Exception {
+        when(orderService.findJastiperProcessingOrders("jastiper-1")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-1/processing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetJastiperCompletedOrders() throws Exception {
+        when(orderService.findJastiperCompletedOrders("jastiper-1")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-1/completed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testSubmitRatingSuccess() throws Exception {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setJastiperRating(5);
+        order.setProductRating(4);
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4)).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "user-def",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jastiperRating").value(5))
+                .andExpect(jsonPath("$.productRating").value(4));
+    }
+
+    @Test
+    void testSubmitRatingNotFound() throws Exception {
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4)).thenReturn(null);
+
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "user-def",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        ))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testSubmitRatingBadRequest() throws Exception {
+        when(orderService.submitOrderRating("order-123", "user-def", 6, 4))
+                .thenThrow(new IllegalArgumentException("invalid"));
+
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "user-def",
+                                "jastiperRating", 6,
+                                "productRating", 4
+                        ))))
                 .andExpect(status().isBadRequest());
     }
 }

@@ -1,26 +1,32 @@
 package id.ac.ui.cs.advprog.order.service;
 
-import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
+import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
+import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpStatus;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -29,13 +35,21 @@ class OrderServiceImplTest {
     private OrderRepository orderRepository;
 
     @Mock
-    private RestTemplate restTemplate;
+    private OrderStateMachine orderStateMachine;
+
+    @Mock
+    private OrderCheckoutFacade orderCheckoutFacade;
+
+    @Mock
+    private WalletGateway walletGateway;
+
+    @Mock
+    private ProfileGateway profileGateway;
 
     @InjectMocks
     private OrderServiceImpl orderService;
 
     private Order order;
-    private InventoryResponse inventoryResponse;
 
     @BeforeEach
     void setUp() {
@@ -45,56 +59,15 @@ class OrderServiceImplTest {
         order.setUserId("u1");
         order.setJumlah(1);
         order.setStatus(OrderStatus.PENDING);
-
-        inventoryResponse = new InventoryResponse();
-        inventoryResponse.setProductId("p1");
-        inventoryResponse.setProductQuantity(10);
-        inventoryResponse.setPrice(5000.0);
-
-        ReflectionTestUtils.setField(orderService, "inventoryUrl", "http://localhost:8081/api/products");
-        ReflectionTestUtils.setField(orderService, "walletUrl", "http://localhost:8082/api/wallets");
     }
 
     @Test
-    void testCreateOrderSuccess() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        when(orderRepository.save(any(Order.class))).thenReturn(order);
+    void testCreateOrderDelegatesToFacade() {
+        when(orderCheckoutFacade.checkout(order)).thenReturn(order);
 
         Order result = orderService.createOrder(order);
-        assertEquals(OrderStatus.PAID, result.getStatus());
-    }
 
-    @Test
-    void testCreateOrderInventoryNotFound() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
-                .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
-
-        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
-    }
-
-    @Test
-    void testCreateOrderInsufficientStock() {
-        inventoryResponse.setProductQuantity(0);
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-
-        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
-    }
-
-    @Test
-    void testCreateOrderWalletFailed() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST)).when(restTemplate).put(contains("wallet"), any());
-
-        assertThrows(IllegalArgumentException.class, () -> orderService.createOrder(order));
-    }
-
-    @Test
-    void testCreateOrderReduceStockFailed() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(inventoryResponse);
-        doNothing().when(restTemplate).put(contains("wallet"), any());
-        doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR)).when(restTemplate).put(contains("reduce-stock"), any());
-
-        assertThrows(RuntimeException.class, () -> orderService.createOrder(order));
+        assertEquals("order-1", result.getId());
     }
 
     @Test
@@ -106,7 +79,7 @@ class OrderServiceImplTest {
     @Test
     void testFindById() {
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
-        assertNotNull(orderService.findOrderById("order-1"));
+        assertEquals("order-1", orderService.findOrderById("order-1").getId());
         assertNull(orderService.findOrderById("kosong"));
     }
 
@@ -114,9 +87,11 @@ class OrderServiceImplTest {
     void testUpdateStatusSuccess() {
         when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.PURCHASED)).thenReturn(true);
 
-        Order result = orderService.updateOrderStatus("order-1", "SHIPPED");
-        assertEquals(OrderStatus.SHIPPED, result.getStatus());
+        order.setStatus(OrderStatus.PAID);
+        Order result = orderService.updateOrderStatus("order-1", "PURCHASED");
+        assertEquals(OrderStatus.PURCHASED, result.getStatus());
     }
 
     @Test
@@ -126,40 +101,185 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void testUpdateOrderStatus_OrderNotFound() {
+    void testUpdateStatusInvalidTransition() {
+        when(orderRepository.findById(anyString())).thenReturn(Optional.of(order));
+        order.setStatus(OrderStatus.PAID);
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.COMPLETED)).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                orderService.updateOrderStatus("order-1", "COMPLETED"));
+    }
+
+    @Test
+    void testUpdateOrderStatusOrderNotFound() {
         when(orderRepository.findById("id-ngawur")).thenReturn(Optional.empty());
         Order result = orderService.updateOrderStatus("id-ngawur", "SHIPPED");
         assertNull(result);
     }
 
     @Test
-    void testCreateOrder_ProductResponseNull() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
-                .thenReturn(null);
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                orderService.createOrder(order)
-        );
-        assertEquals("Stok barang tidak mencukupi!", exception.getMessage());
+    void testCancelOrderByJastiperSuccess() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        Order result = orderService.cancelOrderByJastiper("order-1", "jastiper-1");
+
+        assertEquals(OrderStatus.CANCELLED, result.getStatus());
+        verify(walletGateway).refund("u1", 10000.0);
     }
 
     @Test
-    void testCreateOrder_ProductIdNull() {
-        order.setProductId(null);
-        order.setUserId("user-123");
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                orderService.createOrder(order)
-        );
-        assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
+    void testCancelOrderByJastiperNotFound() {
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertNull(orderService.cancelOrderByJastiper("missing", "jastiper-1"));
     }
 
     @Test
-    void testCreateOrder_UserIdNull() {
-        order.setProductId("prod-123");
-        order.setUserId(null);
+    void testCancelOrderByJastiperInvalidTransitionShouldFail() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.COMPLETED, OrderStatus.CANCELLED)).thenReturn(false);
 
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                orderService.createOrder(order)
-        );
-        assertEquals("Product ID dan User ID tidak boleh kosong", exception.getMessage());
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
+    }
+
+    @Test
+    void testCancelOrderByJastiperShouldRefundZeroWhenTotalAmountNull() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setTotalAmount(null);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        orderService.cancelOrderByJastiper("order-1", "jastiper-1");
+        verify(walletGateway).refund("u1", 0.0);
+    }
+
+    @Test
+    void testCancelOrderByJastiperWrongOwnerShouldFail() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.cancelOrderByJastiper("order-1", "jastiper-2"));
+    }
+
+    @Test
+    void testGetTitiperActiveOrders() {
+        when(orderRepository.findByUserIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findTitiperActiveOrders("user-1").size());
+    }
+
+    @Test
+    void testGetTitiperOrderHistory() {
+        when(orderRepository.findByUserId("user-1")).thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findTitiperOrderHistory("user-1").size());
+    }
+
+    @Test
+    void testGetJastiperTodoOrders() {
+        when(orderRepository.findByJastiperIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findJastiperTodoOrders("jastiper-1").size());
+    }
+
+    @Test
+    void testGetJastiperProcessingOrders() {
+        when(orderRepository.findByJastiperIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findJastiperProcessingOrders("jastiper-1").size());
+    }
+
+    @Test
+    void testGetJastiperCompletedOrders() {
+        when(orderRepository.findByJastiperIdAndStatusIn(anyString(), any()))
+                .thenReturn(List.of(order));
+
+        assertEquals(1, orderService.findJastiperCompletedOrders("jastiper-1").size());
+    }
+
+    @Test
+    void testGetAdminActiveOrders() {
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+        assertEquals(1, orderService.findAdminActiveOrders().size());
+    }
+
+    @Test
+    void testSubmitRatingSuccess() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("j1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        Order result = orderService.submitOrderRating("order-1", "user-1", 5, 4);
+
+        assertEquals(5, result.getJastiperRating());
+        assertEquals(4, result.getProductRating());
+        verify(profileGateway).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void testSubmitRatingReturnsNullWhenOrderNotFound() {
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+        assertNull(orderService.submitOrderRating("missing", "user-1", 5, 4));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailForWrongUser() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("owner-user");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "other-user", 5, 4));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenOrderNotCompleted() {
+        order.setStatus(OrderStatus.SHIPPED);
+        order.setUserId("user-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalStateException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenAlreadySubmitted() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setRatingSubmitted(true);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalStateException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailForInvalidRange() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 0, 6));
     }
 }

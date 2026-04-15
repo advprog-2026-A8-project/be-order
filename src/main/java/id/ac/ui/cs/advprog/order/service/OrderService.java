@@ -8,4 +8,12 @@ public interface OrderService {
     List<Order> findAllOrders();
     Order findOrderById(String id);
     Order updateOrderStatus(String id, String status);
+    Order cancelOrderByJastiper(String id, String jastiperId);
+    List<Order> findTitiperActiveOrders(String userId);
+    List<Order> findTitiperOrderHistory(String userId);
+    List<Order> findJastiperTodoOrders(String jastiperId);
+    List<Order> findJastiperProcessingOrders(String jastiperId);
+    List<Order> findJastiperCompletedOrders(String jastiperId);
+    List<Order> findAdminActiveOrders();
+    Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating);
 }

@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.order.controller;
 
 import id.ac.ui.cs.advprog.order.dto.OrderRequest;
+import id.ac.ui.cs.advprog.order.dto.RatingRequest;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.service.OrderService;
@@ -22,6 +23,7 @@ public class OrderController {
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
         order.setUserId(orderRequest.getUserId());
+        order.setJastiperId(orderRequest.getJastiperId());
         order.setJumlah(orderRequest.getJumlah());
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
         order.setStatus(OrderStatus.PENDING);
@@ -54,6 +56,67 @@ public class OrderController {
             }
             return ResponseEntity.ok(updatedOrder);
         } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
+        try {
+            Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
+            if (cancelledOrder == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(cancelledOrder);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/titiper/{userId}/active")
+    public ResponseEntity<List<Order>> getTitiperActiveOrders(@PathVariable String userId) {
+        return ResponseEntity.ok(orderService.findTitiperActiveOrders(userId));
+    }
+
+    @GetMapping("/titiper/{userId}/history")
+    public ResponseEntity<List<Order>> getTitiperOrderHistory(@PathVariable String userId) {
+        return ResponseEntity.ok(orderService.findTitiperOrderHistory(userId));
+    }
+
+    @GetMapping("/jastiper/{jastiperId}/todo")
+    public ResponseEntity<List<Order>> getJastiperTodoOrders(@PathVariable String jastiperId) {
+        return ResponseEntity.ok(orderService.findJastiperTodoOrders(jastiperId));
+    }
+
+    @GetMapping("/jastiper/{jastiperId}/processing")
+    public ResponseEntity<List<Order>> getJastiperProcessingOrders(@PathVariable String jastiperId) {
+        return ResponseEntity.ok(orderService.findJastiperProcessingOrders(jastiperId));
+    }
+
+    @GetMapping("/jastiper/{jastiperId}/completed")
+    public ResponseEntity<List<Order>> getJastiperCompletedOrders(@PathVariable String jastiperId) {
+        return ResponseEntity.ok(orderService.findJastiperCompletedOrders(jastiperId));
+    }
+
+    @GetMapping("/admin/active")
+    public ResponseEntity<List<Order>> getAdminActiveOrders() {
+        return ResponseEntity.ok(orderService.findAdminActiveOrders());
+    }
+
+    @PostMapping("/{id}/rating")
+    public ResponseEntity<Order> submitRating(@PathVariable String id, @RequestBody RatingRequest ratingRequest) {
+        try {
+            Order ratedOrder = orderService.submitOrderRating(
+                    id,
+                    ratingRequest.getUserId(),
+                    ratingRequest.getJastiperRating(),
+                    ratingRequest.getProductRating()
+            );
+            if (ratedOrder == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(ratedOrder);
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().build();
         }
     }
