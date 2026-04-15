@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -128,6 +129,38 @@ class OrderServiceImplTest {
         Order result = orderService.cancelOrderByJastiper("order-1", "jastiper-1");
 
         assertEquals(OrderStatus.CANCELLED, result.getStatus());
+        verify(walletGateway).refund("u1", 10000.0);
+    }
+
+    @Test
+    void testCancelOrderByJastiperNotFound() {
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertNull(orderService.cancelOrderByJastiper("missing", "jastiper-1"));
+    }
+
+    @Test
+    void testCancelOrderByJastiperInvalidTransitionShouldFail() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.COMPLETED, OrderStatus.CANCELLED)).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
+    }
+
+    @Test
+    void testCancelOrderByJastiperShouldRefundZeroWhenTotalAmountNull() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setTotalAmount(null);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        orderService.cancelOrderByJastiper("order-1", "jastiper-1");
+        verify(walletGateway).refund("u1", 0.0);
     }
 
     @Test
@@ -181,9 +214,16 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminActiveOrders() {
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+        assertEquals(1, orderService.findAdminActiveOrders().size());
+    }
+
+    @Test
     void testSubmitRatingSuccess() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
+        order.setJastiperId("j1");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
 
@@ -196,6 +236,23 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testSubmitRatingReturnsNullWhenOrderNotFound() {
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+        assertNull(orderService.submitOrderRating("missing", "user-1", 5, 4));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailForWrongUser() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("owner-user");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "other-user", 5, 4));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
     void testSubmitRatingShouldFailWhenOrderNotCompleted() {
         order.setStatus(OrderStatus.SHIPPED);
         order.setUserId("user-1");
@@ -203,5 +260,26 @@ class OrderServiceImplTest {
 
         assertThrows(IllegalStateException.class,
                 () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenAlreadySubmitted() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setRatingSubmitted(true);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalStateException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailForInvalidRange() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 0, 6));
     }
 }

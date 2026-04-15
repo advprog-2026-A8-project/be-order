@@ -24,4 +24,9 @@ class OrderStateMachineTest {
         assertFalse(stateMachine.isValidTransition(OrderStatus.COMPLETED, OrderStatus.CANCELLED));
         assertFalse(stateMachine.isValidTransition(OrderStatus.CANCELLED, OrderStatus.PAID));
     }
+
+    @Test
+    void shouldReturnFalseWhenCurrentStatusUnknown() {
+        assertFalse(stateMachine.isValidTransition(null, OrderStatus.PAID));
+    }
 }
