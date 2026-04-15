@@ -107,6 +107,23 @@ class OrderControllerTest {
     }
 
     @Test
+    void testCancelByJastiperNotFound() throws Exception {
+        when(orderService.cancelOrderByJastiper("order-123", "jastiper-1")).thenReturn(null);
+
+        mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testCancelByJastiperBadRequest() throws Exception {
+        when(orderService.cancelOrderByJastiper("order-123", "jastiper-1"))
+                .thenThrow(new IllegalArgumentException("forbidden"));
+
+        mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void testGetTitiperActiveOrders() throws Exception {
         when(orderService.findTitiperActiveOrders("user-def")).thenReturn(Arrays.asList(order));
 
@@ -177,5 +194,34 @@ class OrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.jastiperRating").value(5))
                 .andExpect(jsonPath("$.productRating").value(4));
+    }
+
+    @Test
+    void testSubmitRatingNotFound() throws Exception {
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4)).thenReturn(null);
+
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "user-def",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        ))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testSubmitRatingBadRequest() throws Exception {
+        when(orderService.submitOrderRating("order-123", "user-def", 6, 4))
+                .thenThrow(new IllegalArgumentException("invalid"));
+
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "user-def",
+                                "jastiperRating", 6,
+                                "productRating", 4
+                        ))))
+                .andExpect(status().isBadRequest());
     }
 }
