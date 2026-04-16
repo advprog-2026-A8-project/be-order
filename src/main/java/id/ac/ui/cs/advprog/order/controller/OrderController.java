@@ -19,7 +19,10 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/checkout")
-    public ResponseEntity<Order> checkout(@RequestBody OrderRequest orderRequest) {
+    public ResponseEntity<Order> checkout(
+            @RequestBody OrderRequest orderRequest,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
         order.setUserId(orderRequest.getUserId());
@@ -28,7 +31,7 @@ public class OrderController {
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
         order.setStatus(OrderStatus.PENDING);
 
-        Order savedOrder = orderService.createOrder(order);
+        Order savedOrder = orderService.createOrder(order, idempotencyKey);
         return ResponseEntity.ok(savedOrder);
     }
 

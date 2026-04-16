@@ -17,6 +17,9 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -44,7 +47,20 @@ class OrderControllerTest {
 
     @Test
     void testCheckoutSuccess() throws Exception {
-        when(orderService.createOrder(any(Order.class))).thenReturn(order);
+        when(orderService.createOrder(any(Order.class), anyString())).thenReturn(order);
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", "idem-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isOk());
+
+        verify(orderService).createOrder(any(Order.class), eq("idem-1"));
+    }
+
+    @Test
+    void testCheckoutWithoutIdempotencyHeader() throws Exception {
+        when(orderService.createOrder(any(Order.class), isNull())).thenReturn(order);
+
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(order)))
