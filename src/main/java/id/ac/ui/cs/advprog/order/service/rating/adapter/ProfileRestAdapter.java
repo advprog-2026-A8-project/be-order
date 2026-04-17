@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -18,6 +19,9 @@ public class ProfileRestAdapter implements ProfileGateway {
 
     @Value("${order.profile.url}")
     private String profileUrl;
+
+    @Value("${order.http.retry.max-attempts:2}")
+    private int maxAttempts;
 
     @Override
     public void submitRating(String orderId,
@@ -39,10 +43,17 @@ public class ProfileRestAdapter implements ProfileGateway {
                 "productRating", productRating
         );
 
-        try {
-            restTemplate.postForEntity(ratingUrl, payload, Void.class);
-        } catch (HttpClientErrorException ex) {
-            throw new IllegalStateException("Gagal mengirim rating ke Profile module", ex);
+        ResourceAccessException lastTransientError = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                restTemplate.postForEntity(ratingUrl, payload, Void.class);
+                return;
+            } catch (HttpClientErrorException ex) {
+                throw new IllegalStateException("Gagal mengirim rating ke Profile module", ex);
+            } catch (ResourceAccessException ex) {
+                lastTransientError = ex;
+            }
         }
+        throw new IllegalStateException("Gagal mengakses Profile module untuk submit rating", lastTransientError);
     }
 }

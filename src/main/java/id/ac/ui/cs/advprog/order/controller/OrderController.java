@@ -5,6 +5,7 @@ import id.ac.ui.cs.advprog.order.dto.RatingRequest;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.service.OrderService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,7 +21,7 @@ public class OrderController {
 
     @PostMapping("/checkout")
     public ResponseEntity<Order> checkout(
-            @RequestBody OrderRequest orderRequest,
+            @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
         Order order = new Order();
@@ -107,7 +108,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/rating")
-    public ResponseEntity<Order> submitRating(@PathVariable String id, @RequestBody RatingRequest ratingRequest) {
+    public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
         try {
             Order ratedOrder = orderService.submitOrderRating(
                     id,
