@@ -17,6 +17,9 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -38,17 +41,49 @@ class OrderControllerTest {
         order.setId("order-123");
         order.setProductId("prod-abc");
         order.setUserId("user-def");
+        order.setJastiperId("jastiper-1");
         order.setJumlah(2);
+        order.setAlamatPengiriman("Jakarta");
         order.setStatus(OrderStatus.PENDING);
     }
 
     @Test
     void testCheckoutSuccess() throws Exception {
-        when(orderService.createOrder(any(Order.class))).thenReturn(order);
+        when(orderService.createOrder(any(Order.class), anyString())).thenReturn(order);
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", "idem-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isOk());
+
+        verify(orderService).createOrder(any(Order.class), eq("idem-1"));
+    }
+
+    @Test
+    void testCheckoutWithoutIdempotencyHeader() throws Exception {
+        when(orderService.createOrder(any(Order.class), isNull())).thenReturn(order);
+
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(order)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void testCheckoutValidationErrorShouldReturnStructuredError() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "productId", "",
+                                "userId", "user-def",
+                                "jumlah", 0,
+                                "alamatPengiriman", ""
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
     }
 
     @Test
@@ -223,5 +258,19 @@ class OrderControllerTest {
                                 "productRating", 4
                         ))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testSubmitRatingValidationErrorShouldReturnStructuredError() throws Exception {
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "",
+                                "jastiperRating", 0,
+                                "productRating", 7
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/rating"));
     }
 }

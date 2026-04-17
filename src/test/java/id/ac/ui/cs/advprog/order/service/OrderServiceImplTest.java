@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,11 +64,21 @@ class OrderServiceImplTest {
 
     @Test
     void testCreateOrderDelegatesToFacade() {
-        when(orderCheckoutFacade.checkout(order)).thenReturn(order);
+        when(orderCheckoutFacade.checkout(order, null)).thenReturn(order);
 
         Order result = orderService.createOrder(order);
 
         assertEquals("order-1", result.getId());
+    }
+
+    @Test
+    void testCreateOrderWithIdempotencyDelegatesToFacade() {
+        when(orderCheckoutFacade.checkout(order, "idem-1")).thenReturn(order);
+
+        Order result = orderService.createOrder(order, "idem-1");
+
+        assertEquals("order-1", result.getId());
+        verify(orderCheckoutFacade).checkout(eq(order), eq("idem-1"));
     }
 
     @Test

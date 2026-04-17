@@ -35,7 +35,12 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order createOrder(Order order) {
-        return orderCheckoutFacade.checkout(order);
+        return createOrder(order, null);
+    }
+
+    @Override
+    public Order createOrder(Order order, String idempotencyKey) {
+        return orderCheckoutFacade.checkout(order, idempotencyKey);
     }
 
     @Override
