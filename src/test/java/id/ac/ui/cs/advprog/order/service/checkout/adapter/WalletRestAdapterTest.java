@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,6 +17,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class WalletRestAdapterTest {
@@ -29,6 +31,7 @@ class WalletRestAdapterTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(adapter, "walletUrl", "http://localhost:8082/api/wallets");
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
     }
 
     @Test
@@ -46,6 +49,16 @@ class WalletRestAdapterTest {
     }
 
     @Test
+    void debitShouldRetryOnTransientFailure() {
+        doThrow(new ResourceAccessException("timeout"))
+                .doNothing()
+                .when(restTemplate).put(anyString(), eq((Object) null));
+
+        adapter.debit("u1", 10000.0);
+        verify(restTemplate, times(2)).put(anyString(), eq((Object) null));
+    }
+
+    @Test
     void refundSuccess() {
         adapter.refund("u1", 10000.0);
         verify(restTemplate).put(anyString(), eq((Object) null));
@@ -57,5 +70,15 @@ class WalletRestAdapterTest {
                 .when(restTemplate).put(anyString(), eq((Object) null));
 
         assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));
+    }
+
+    @Test
+    void refundShouldRetryOnTransientFailure() {
+        doThrow(new ResourceAccessException("timeout"))
+                .doNothing()
+                .when(restTemplate).put(anyString(), eq((Object) null));
+
+        adapter.refund("u1", 10000.0);
+        verify(restTemplate, times(2)).put(anyString(), eq((Object) null));
     }
 }

@@ -41,7 +41,9 @@ class OrderControllerTest {
         order.setId("order-123");
         order.setProductId("prod-abc");
         order.setUserId("user-def");
+        order.setJastiperId("jastiper-1");
         order.setJumlah(2);
+        order.setAlamatPengiriman("Jakarta");
         order.setStatus(OrderStatus.PENDING);
     }
 
@@ -65,6 +67,23 @@ class OrderControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(order)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void testCheckoutValidationErrorShouldReturnStructuredError() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "productId", "",
+                                "userId", "user-def",
+                                "jumlah", 0,
+                                "alamatPengiriman", ""
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
     }
 
     @Test
@@ -239,5 +258,19 @@ class OrderControllerTest {
                                 "productRating", 4
                         ))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testSubmitRatingValidationErrorShouldReturnStructuredError() throws Exception {
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "",
+                                "jastiperRating", 0,
+                                "productRating", 7
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/rating"));
     }
 }
