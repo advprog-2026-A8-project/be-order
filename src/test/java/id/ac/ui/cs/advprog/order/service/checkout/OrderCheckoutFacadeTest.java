@@ -150,4 +150,14 @@ class OrderCheckoutFacadeTest {
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
         verify(orderRepository, times(0)).save(any(Order.class));
     }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyButMissingOrderShouldThrow() {
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-1"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-404")));
+        when(orderRepository.findById("order-404")).thenReturn(java.util.Optional.empty());
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-1"));
+    }
 }

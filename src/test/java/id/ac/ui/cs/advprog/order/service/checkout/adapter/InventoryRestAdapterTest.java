@@ -71,6 +71,15 @@ class InventoryRestAdapterTest {
     }
 
     @Test
+    void getProductShouldThrowWhenTransientFailureExhausted() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+                .thenThrow(new ResourceAccessException("timeout-1"))
+                .thenThrow(new ResourceAccessException("timeout-2"));
+
+        assertThrows(IllegalStateException.class, () -> adapter.getProduct("p1"));
+    }
+
+    @Test
     void reduceStockSuccess() {
         adapter.reduceStock("p1", 2);
         verify(restTemplate).put(anyString(), eq((Object) null));
@@ -93,5 +102,14 @@ class InventoryRestAdapterTest {
         adapter.reduceStock("p1", 2);
 
         verify(restTemplate, times(2)).put(anyString(), eq((Object) null));
+    }
+
+    @Test
+    void reduceStockShouldThrowWhenTransientFailureExhausted() {
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
+                .when(restTemplate).put(anyString(), eq((Object) null));
+
+        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
     }
 }

@@ -59,6 +59,15 @@ class WalletRestAdapterTest {
     }
 
     @Test
+    void debitShouldThrowWhenTransientFailureExhausted() {
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
+                .when(restTemplate).put(anyString(), eq((Object) null));
+
+        assertThrows(IllegalStateException.class, () -> adapter.debit("u1", 10000.0));
+    }
+
+    @Test
     void refundSuccess() {
         adapter.refund("u1", 10000.0);
         verify(restTemplate).put(anyString(), eq((Object) null));
@@ -80,5 +89,14 @@ class WalletRestAdapterTest {
 
         adapter.refund("u1", 10000.0);
         verify(restTemplate, times(2)).put(anyString(), eq((Object) null));
+    }
+
+    @Test
+    void refundShouldThrowWhenTransientFailureExhausted() {
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
+                .when(restTemplate).put(anyString(), eq((Object) null));
+
+        assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));
     }
 }

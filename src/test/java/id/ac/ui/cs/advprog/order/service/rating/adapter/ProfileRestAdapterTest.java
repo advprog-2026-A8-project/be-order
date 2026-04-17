@@ -62,4 +62,14 @@ class ProfileRestAdapterTest {
 
         verify(restTemplate, times(2)).postForEntity(anyString(), any(), eq(Void.class));
     }
+
+    @Test
+    void submitRatingShouldThrowWhenTransientFailureExhausted() {
+        when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
+                .thenThrow(new ResourceAccessException("timeout-1"))
+                .thenThrow(new ResourceAccessException("timeout-2"));
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "u1", "j1", "p1", 5, 4));
+    }
 }
