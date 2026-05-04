@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.order.service;
 
+import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.exception.InvalidOrderTransitionException;
 import id.ac.ui.cs.advprog.order.model.Order;
@@ -12,6 +13,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -125,6 +129,37 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<Order> findAdminActiveOrders() {
         return orderRepository.findByStatusIn(ACTIVE_STATUSES);
+    }
+
+    @Override
+    public AdminOrderSummaryResponse getAdminOrderSummary() {
+        List<Order> orders = orderRepository.findAll();
+        Map<String, Long> statusCounts = groupStatusCounts(orders);
+
+        long totalOrders = orders.size();
+        long activeOrders = countOrders(orders, order -> ACTIVE_STATUSES.contains(order.getStatus()));
+        long completedOrders = countOrders(orders, order -> order.getStatus() == OrderStatus.COMPLETED);
+        long cancelledOrders = countOrders(orders, order -> order.getStatus() == OrderStatus.CANCELLED);
+
+        return new AdminOrderSummaryResponse(
+                totalOrders,
+                activeOrders,
+                completedOrders,
+                cancelledOrders,
+                statusCounts
+        );
+    }
+
+    private Map<String, Long> groupStatusCounts(List<Order> orders) {
+        return orders.stream()
+                .collect(Collectors.groupingBy(
+                        order -> order.getStatus().name(),
+                        Collectors.counting()
+                ));
+    }
+
+    private long countOrders(List<Order> orders, Predicate<Order> predicate) {
+        return orders.stream().filter(predicate).count();
     }
 
     @Override

@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.order.service;
 
+import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
@@ -316,5 +317,40 @@ class OrderServiceImplTest {
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
         verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
+    void testGetAdminOrderSummary() {
+        Order paid = new Order();
+        paid.setStatus(OrderStatus.PAID);
+        Order completed = new Order();
+        completed.setStatus(OrderStatus.COMPLETED);
+        Order cancelled = new Order();
+        cancelled.setStatus(OrderStatus.CANCELLED);
+
+        when(orderRepository.findAll()).thenReturn(List.of(paid, completed, cancelled));
+
+        AdminOrderSummaryResponse summary = orderService.getAdminOrderSummary();
+
+        assertEquals(3L, summary.getTotalOrders());
+        assertEquals(1L, summary.getActiveOrders());
+        assertEquals(1L, summary.getCompletedOrders());
+        assertEquals(1L, summary.getCancelledOrders());
+        assertEquals(1L, summary.getStatusCounts().get("PAID"));
+        assertEquals(1L, summary.getStatusCounts().get("COMPLETED"));
+        assertEquals(1L, summary.getStatusCounts().get("CANCELLED"));
+    }
+
+    @Test
+    void testGetAdminOrderSummaryWhenNoOrders() {
+        when(orderRepository.findAll()).thenReturn(List.of());
+
+        AdminOrderSummaryResponse summary = orderService.getAdminOrderSummary();
+
+        assertEquals(0L, summary.getTotalOrders());
+        assertEquals(0L, summary.getActiveOrders());
+        assertEquals(0L, summary.getCompletedOrders());
+        assertEquals(0L, summary.getCancelledOrders());
+        assertEquals(0, summary.getStatusCounts().size());
     }
 }

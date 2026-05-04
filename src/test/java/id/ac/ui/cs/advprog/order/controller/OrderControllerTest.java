@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.order.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.service.OrderService;
@@ -13,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -219,6 +221,26 @@ class OrderControllerTest {
         mockMvc.perform(get("/api/orders/admin/active"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetAdminOrderSummary() throws Exception {
+        Map<String, Long> statusCounts = new HashMap<>();
+        statusCounts.put("PAID", 2L);
+        statusCounts.put("COMPLETED", 1L);
+        AdminOrderSummaryResponse summary = new AdminOrderSummaryResponse(
+                3L, 2L, 1L, 0L, statusCounts
+        );
+        when(orderService.getAdminOrderSummary()).thenReturn(summary);
+
+        mockMvc.perform(get("/api/orders/admin/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalOrders").value(3))
+                .andExpect(jsonPath("$.activeOrders").value(2))
+                .andExpect(jsonPath("$.completedOrders").value(1))
+                .andExpect(jsonPath("$.cancelledOrders").value(0))
+                .andExpect(jsonPath("$.statusCounts.PAID").value(2))
+                .andExpect(jsonPath("$.statusCounts.COMPLETED").value(1));
     }
 
     @Test
