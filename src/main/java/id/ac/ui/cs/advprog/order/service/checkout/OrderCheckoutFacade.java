@@ -27,6 +27,7 @@ public class OrderCheckoutFacade {
     private final OrderRepository orderRepository;
     private final OrderIdempotencyRepository orderIdempotencyRepository;
     private final CheckoutLockManager checkoutLockManager;
+    private final CheckoutAuditLogger checkoutAuditLogger;
 
     public Order checkout(Order order) {
         return checkout(order, null);
@@ -34,6 +35,7 @@ public class OrderCheckoutFacade {
 
     public Order checkout(Order order, String idempotencyKey) {
         validateOrderRequest(order);
+        checkoutAuditLogger.logCheckoutStarted(order, idempotencyKey);
 
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             return checkoutWithIdempotency(order, idempotencyKey.trim());
@@ -74,11 +76,14 @@ public class OrderCheckoutFacade {
 
             double totalPrice = product.getPrice() * order.getJumlah();
             walletGateway.debit(order.getUserId(), totalPrice);
+            checkoutAuditLogger.logDebitSucceeded(order.getUserId(), totalPrice);
 
             try {
                 inventoryGateway.reduceStock(order.getProductId(), order.getJumlah());
+                checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
                 walletGateway.refund(order.getUserId(), totalPrice);
+                checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, "inventory_reduce_failed");
                 throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.", ex);
             }
 
