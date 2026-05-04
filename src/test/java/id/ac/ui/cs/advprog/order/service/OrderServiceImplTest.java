@@ -422,6 +422,18 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidSortBy() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "createdAt", "asc"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidDirection() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "id", "down"));
+    }
+
+    @Test
     void testGetAdminActiveOrdersPaged() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));

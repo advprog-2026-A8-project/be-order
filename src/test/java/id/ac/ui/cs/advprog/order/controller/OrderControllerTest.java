@@ -286,6 +286,36 @@ class OrderControllerTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidSortBy() throws Exception {
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "createdAt", "asc"))
+                .thenThrow(new IllegalArgumentException("SortBy tidak valid"));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5")
+                        .param("sortBy", "createdAt")
+                        .param("direction", "asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidDirection() throws Exception {
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "id", "down"))
+                .thenThrow(new IllegalArgumentException("Direction harus asc atau desc"));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5")
+                        .param("sortBy", "id")
+                        .param("direction", "down"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
     void testGetAdminOrdersByStatusPagedShouldRejectNegativePage() throws Exception {
         when(orderService.findAdminOrdersByStatusPaged("PAID", -1, 5, "id", "asc"))
                 .thenThrow(new IllegalArgumentException("Page tidak boleh negatif"));
