@@ -129,10 +129,12 @@ class OrderCheckoutFacadeTest {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger).logValidationFailed("insufficient_stock");
 
         product.setProductQuantity(1);
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(2)).logValidationFailed("insufficient_stock");
     }
 
     @Test
@@ -143,6 +145,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
+        verify(checkoutAuditLogger).logValidationFailed("wallet_debit_failed");
     }
 
     @Test
