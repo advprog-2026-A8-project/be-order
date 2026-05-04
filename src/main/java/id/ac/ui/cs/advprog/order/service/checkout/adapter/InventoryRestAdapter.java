@@ -9,6 +9,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Map;
+
 @Component
 @RequiredArgsConstructor
 public class InventoryRestAdapter implements InventoryGateway {
@@ -33,13 +35,24 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void reduceStock(String productId, int quantity) {
-        String reduceStockUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment(productId, "reduce-stock")
-                .queryParam("quantity", quantity)
+        InventoryResponse currentProduct = getProduct(productId);
+        Integer currentStock = currentProduct.getProductQuantity();
+        int updatedStock = (currentStock == null ? 0 : currentStock) - quantity;
+
+        String updateProductUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
+                .pathSegment("update", productId)
                 .toUriString();
 
+        Map<String, Object> payload = Map.of(
+                "name", currentProduct.getProductName(),
+                "description", "",
+                "price", currentProduct.getPrice() == null ? 0.0 : currentProduct.getPrice(),
+                "stock", updatedStock,
+                "jastiperId", ""
+        );
+
         try {
-            restTemplate.put(reduceStockUrl, null);
+            restTemplate.put(updateProductUrl, payload);
         } catch (HttpClientErrorException e) {
             throw new IllegalStateException("Gagal mengurangi stok inventory.", e);
         }
