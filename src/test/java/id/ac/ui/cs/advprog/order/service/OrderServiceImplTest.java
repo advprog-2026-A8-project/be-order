@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.Arrays;
 import java.util.List;
@@ -379,6 +382,18 @@ class OrderServiceImplTest {
     @Test
     void testGetAdminOrdersByStatusInvalidShouldThrow() {
         assertThrows(IllegalArgumentException.class, () -> orderService.findAdminOrdersByStatus("INVALID"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPaged() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findAll(PageRequest.of(0, 10))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminActiveOrdersPaged(0, 10);
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
     }
 
 }

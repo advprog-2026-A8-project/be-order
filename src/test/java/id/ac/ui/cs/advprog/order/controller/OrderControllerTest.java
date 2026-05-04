@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -251,6 +252,19 @@ class OrderControllerTest {
         mockMvc.perform(get("/api/orders/admin/by-status").param("status", "PAID"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("PAID"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPaged() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminActiveOrdersPaged(0, 10)).thenReturn(new PageImpl<>(Arrays.asList(order)));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("order-123"))
+                .andExpect(jsonPath("$.content[0].status").value("PAID"));
     }
 
     @Test
