@@ -13,11 +13,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebMvcTest(OrderController.class)
 @Import({SecurityConfig.class, OrderAccessGuard.class})
@@ -31,6 +34,7 @@ class OrderControllerSecurityTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void adminEndpointShouldRejectNonAdminRole() throws Exception {
@@ -115,5 +119,51 @@ class OrderControllerSecurityTest {
         mockMvc.perform(get("/api/orders/jastiper/jastiper-2/completed")
                         .with(user("jastiper-1").roles("JASTIPER")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cancelEndpointShouldRejectTitiperRole() throws Exception {
+        mockMvc.perform(post("/api/orders/order-1/cancel")
+                        .param("jastiperId", "jastiper-1")
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cancelEndpointShouldAllowJastiperRole() throws Exception {
+        when(orderService.cancelOrderByJastiper("order-1", "jastiper-1")).thenReturn(new Order());
+
+        mockMvc.perform(post("/api/orders/order-1/cancel")
+                        .param("jastiperId", "jastiper-1")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void ratingEndpointShouldRejectJastiperRole() throws Exception {
+        mockMvc.perform(post("/api/orders/order-1/rating")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "userId", "user-1",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        )))
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ratingEndpointShouldAllowTitiperRole() throws Exception {
+        when(orderService.submitOrderRating("order-1", "user-1", 5, 4)).thenReturn(new Order());
+
+        mockMvc.perform(post("/api/orders/order-1/rating")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "userId", "user-1",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        )))
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isOk());
     }
 }
