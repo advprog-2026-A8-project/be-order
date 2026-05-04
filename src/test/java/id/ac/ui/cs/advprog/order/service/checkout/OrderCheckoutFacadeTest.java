@@ -184,6 +184,7 @@ class OrderCheckoutFacadeTest {
         verify(walletGateway, never()).debit(any(), any(Double.class));
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
         verify(orderRepository, times(0)).save(any(Order.class));
+        verify(checkoutAuditLogger).logIdempotencyHit("idem-1", "order-100");
     }
 
     @Test

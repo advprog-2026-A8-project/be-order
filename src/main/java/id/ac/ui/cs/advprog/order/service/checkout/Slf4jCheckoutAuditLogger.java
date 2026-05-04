@@ -19,6 +19,11 @@ public class Slf4jCheckoutAuditLogger implements CheckoutAuditLogger {
     }
 
     @Override
+    public void logIdempotencyHit(String idempotencyKey, String orderId) {
+        log.info("checkout_idempotency_hit idempotencyKey={} orderId={}", idempotencyKey, orderId);
+    }
+
+    @Override
     public void logDebitSucceeded(String userId, double amount) {
         log.info("checkout_debit_succeeded userId={} amount={}", userId, amount);
     }

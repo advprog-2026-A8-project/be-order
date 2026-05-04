@@ -21,6 +21,7 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
+    private static final String REFUND_REASON_INVENTORY_REDUCE_FAILED = "inventory_reduce_failed";
 
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
@@ -54,6 +55,7 @@ public class OrderCheckoutFacade {
                 if (!hasSameCheckoutPayload(existingOrder, order)) {
                     throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
                 }
+                checkoutAuditLogger.logIdempotencyHit(idempotencyKey, existingOrder.getId());
                 return existingOrder;
             }
 
@@ -83,7 +85,7 @@ public class OrderCheckoutFacade {
                 checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
                 walletGateway.refund(order.getUserId(), totalPrice);
-                checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, "inventory_reduce_failed");
+                checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, REFUND_REASON_INVENTORY_REDUCE_FAILED);
                 throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.", ex);
             }
 
