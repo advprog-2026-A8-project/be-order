@@ -19,4 +19,15 @@ class CheckoutLockManagerTest {
         assertNotNull(lock1);
         assertSame(lock1, lock2);
     }
+
+    @Test
+    void shouldReturnSameLockForSameIdempotencyKey() {
+        CheckoutLockManager manager = new CheckoutLockManager();
+
+        ReentrantLock lock1 = manager.getLockForIdempotencyKey("idem-1");
+        ReentrantLock lock2 = manager.getLockForIdempotencyKey("idem-1");
+
+        assertNotNull(lock1);
+        assertSame(lock1, lock2);
+    }
 }

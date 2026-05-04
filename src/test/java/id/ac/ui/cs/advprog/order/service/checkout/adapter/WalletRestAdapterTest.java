@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -17,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,6 +34,7 @@ class WalletRestAdapterTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(adapter, "walletUrl", "http://localhost:8082/wallet");
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
     }
 
     @Test
@@ -52,6 +55,25 @@ class WalletRestAdapterTest {
     }
 
     @Test
+    void debitShouldRetryOnTransientFailure() {
+        doThrow(new ResourceAccessException("timeout"))
+                .doReturn(ResponseEntity.ok().build())
+                .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+
+        adapter.debit("u1", 10000.0);
+        verify(restTemplate, times(2)).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
+    void debitShouldThrowWhenTransientFailureExhausted() {
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
+                .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+
+        assertThrows(IllegalStateException.class, () -> adapter.debit("u1", 10000.0));
+    }
+
+    @Test
     void refundSuccess() {
         when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
                 .thenReturn(ResponseEntity.ok().build());
@@ -63,6 +85,25 @@ class WalletRestAdapterTest {
     @Test
     void refundFailureShouldThrow() {
         doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR))
+                .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+
+        assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));
+    }
+
+    @Test
+    void refundShouldRetryOnTransientFailure() {
+        doThrow(new ResourceAccessException("timeout"))
+                .doReturn(ResponseEntity.ok().build())
+                .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+
+        adapter.refund("u1", 10000.0);
+        verify(restTemplate, times(2)).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
+    void refundShouldThrowWhenTransientFailureExhausted() {
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
         assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));

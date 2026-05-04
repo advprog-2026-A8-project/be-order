@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,6 +20,8 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,6 +36,7 @@ class InventoryRestAdapterTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(adapter, "inventoryUrl", "http://localhost:8081/api/products");
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
     }
 
     @Test
@@ -52,6 +56,29 @@ class InventoryRestAdapterTest {
                 .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
 
         assertThrows(IllegalArgumentException.class, () -> adapter.getProduct("p1"));
+    }
+
+    @Test
+    void getProductShouldRetryOnTransientFailure() {
+        InventoryResponse response = new InventoryResponse();
+        response.setProductId("p1");
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+                .thenThrow(new ResourceAccessException("timeout"))
+                .thenReturn(response);
+
+        InventoryResponse result = adapter.getProduct("p1");
+
+        assertEquals("p1", result.getProductId());
+        verify(restTemplate, times(2)).getForObject(anyString(), eq(InventoryResponse.class));
+    }
+
+    @Test
+    void getProductShouldThrowWhenTransientFailureExhausted() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+                .thenThrow(new ResourceAccessException("timeout-1"))
+                .thenThrow(new ResourceAccessException("timeout-2"));
+
+        assertThrows(IllegalStateException.class, () -> adapter.getProduct("p1"));
     }
 
     @Test
@@ -89,6 +116,42 @@ class InventoryRestAdapterTest {
                 .thenReturn(product);
 
         doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
+                .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(body -> body != null));
+
+        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
+    }
+
+    @Test
+    void reduceStockShouldRetryOnTransientFailure() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(10);
+        when(restTemplate.getForObject(eq("http://localhost:8081/api/products/p1"), eq(InventoryResponse.class)))
+                .thenReturn(product);
+
+        doThrow(new ResourceAccessException("timeout"))
+                .doNothing()
+                .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(body -> body != null));
+
+        adapter.reduceStock("p1", 2);
+
+        verify(restTemplate, times(2)).put(eq("http://localhost:8081/api/products/update/p1"), argThat(body -> body != null));
+    }
+
+    @Test
+    void reduceStockShouldThrowWhenTransientFailureExhausted() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(10);
+        when(restTemplate.getForObject(eq("http://localhost:8081/api/products/p1"), eq(InventoryResponse.class)))
+                .thenReturn(product);
+
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
                 .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(body -> body != null));
 
         assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));

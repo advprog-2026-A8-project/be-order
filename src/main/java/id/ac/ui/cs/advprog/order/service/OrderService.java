@@ -5,6 +5,7 @@ import java.util.List;
 
 public interface OrderService {
     Order createOrder(Order order);
+    Order createOrder(Order order, String idempotencyKey);
     List<Order> findAllOrders();
     Order findOrderById(String id);
     Order updateOrderStatus(String id, String status);

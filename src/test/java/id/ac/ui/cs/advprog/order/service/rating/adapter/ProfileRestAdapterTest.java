@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -17,6 +18,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +33,7 @@ class ProfileRestAdapterTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(adapter, "profileUrl", "http://localhost:8083/api/profile");
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
     }
 
     @Test
@@ -45,6 +48,27 @@ class ProfileRestAdapterTest {
     @Test
     void submitRatingFailureShouldThrow() {
         doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
+                .when(restTemplate).put(anyString(), any());
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldRetryOnTransientFailure() {
+        doThrow(new ResourceAccessException("timeout"))
+                .doNothing()
+                .when(restTemplate).put(anyString(), any());
+
+        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+
+        verify(restTemplate, times(2)).put(anyString(), any());
+    }
+
+    @Test
+    void submitRatingShouldThrowWhenTransientFailureExhausted() {
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
                 .when(restTemplate).put(anyString(), any());
 
         assertThrows(IllegalStateException.class, () ->

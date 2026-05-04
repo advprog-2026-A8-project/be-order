@@ -3,6 +3,8 @@ package id.ac.ui.cs.advprog.order.service.checkout;
 import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.model.OrderIdempotency;
+import id.ac.ui.cs.advprog.order.repository.OrderIdempotencyRepository;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class OrderCheckoutFacadeTest {
@@ -32,6 +35,9 @@ class OrderCheckoutFacadeTest {
 
     @Mock
     private OrderRepository orderRepository;
+
+    @Mock
+    private OrderIdempotencyRepository orderIdempotencyRepository;
 
     @Mock
     private CheckoutLockManager checkoutLockManager;
@@ -107,5 +113,51 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(walletGateway).refund("u1", 10000.0);
+    }
+
+    @Test
+    void checkoutWithIdempotencyKeyShouldStoreKeyOnFirstRequest() {
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-1")).thenReturn(java.util.Optional.empty());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-100");
+            return saved;
+        });
+
+        Order result = checkoutFacade.checkout(order, "idem-1");
+
+        assertEquals("order-100", result.getId());
+        verify(orderIdempotencyRepository).save(any(OrderIdempotency.class));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyShouldReturnExistingOrderWithoutChargingAgain() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-1"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        Order result = checkoutFacade.checkout(order, "idem-1");
+
+        assertEquals("order-100", result.getId());
+        verify(walletGateway, never()).debit(any(), any(Double.class));
+        verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
+        verify(orderRepository, times(0)).save(any(Order.class));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyButMissingOrderShouldThrow() {
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-1"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-404")));
+        when(orderRepository.findById("order-404")).thenReturn(java.util.Optional.empty());
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-1"));
     }
 }
