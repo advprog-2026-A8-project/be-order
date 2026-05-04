@@ -169,7 +169,9 @@ class OrderControllerTest {
     void testUpdateStatusInvalid() throws Exception {
         when(orderService.updateOrderStatus(anyString(), anyString())).thenThrow(new IllegalArgumentException());
         mockMvc.perform(patch("/api/orders/order-123/status").param("status", "SALAH"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/status"));
     }
 
     @Test
@@ -196,7 +198,9 @@ class OrderControllerTest {
                 .thenThrow(new IllegalArgumentException("forbidden"));
 
         mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/cancel"));
     }
 
     @Test
@@ -298,7 +302,9 @@ class OrderControllerTest {
                                 "jastiperRating", 6,
                                 "productRating", 4
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/rating"));
     }
 
     @Test
