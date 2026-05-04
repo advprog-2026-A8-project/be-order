@@ -11,5 +11,8 @@ public class OrderAccessGuard {
                 && authentication.getName() != null
                 && authentication.getName().equals(userId);
     }
-}
 
+    public boolean isOwnerOfRequestedUser(Authentication authentication, String requestedUserId) {
+        return isOwner(authentication, requestedUserId);
+    }
+}
