@@ -140,6 +140,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
         }
         validateRatingRange(jastiperRating, productRating);
+        validateNumericJastiperId(order.getJastiperId());
 
         profileGateway.submitRating(
                 order.getId(),
@@ -159,6 +160,17 @@ public class OrderServiceImpl implements OrderService {
     private void validateRatingRange(int jastiperRating, int productRating) {
         if (jastiperRating < 1 || jastiperRating > 5 || productRating < 1 || productRating > 5) {
             throw new IllegalArgumentException("Rating harus berada pada rentang 1-5");
+        }
+    }
+
+    private void validateNumericJastiperId(String jastiperId) {
+        if (jastiperId == null || jastiperId.isBlank()) {
+            throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.");
+        }
+        try {
+            Long.parseLong(jastiperId);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
         }
     }
 }

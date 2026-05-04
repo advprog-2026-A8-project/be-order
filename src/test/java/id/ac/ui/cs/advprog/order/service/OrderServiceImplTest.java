@@ -234,7 +234,7 @@ class OrderServiceImplTest {
     void testSubmitRatingSuccess() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
-        order.setJastiperId("j1");
+        order.setJastiperId("10");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
 
