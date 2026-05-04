@@ -16,6 +16,7 @@ import java.util.List;
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
 public class OrderController {
+    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
     private final OrderService orderService;
 
@@ -24,6 +25,8 @@ public class OrderController {
             @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
         order.setUserId(orderRequest.getUserId());
@@ -32,8 +35,23 @@ public class OrderController {
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
         order.setStatus(OrderStatus.PENDING);
 
-        Order savedOrder = orderService.createOrder(order, idempotencyKey);
+        Order savedOrder = orderService.createOrder(order, normalizedIdempotencyKey);
         return ResponseEntity.ok(savedOrder);
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+
+        String trimmed = idempotencyKey.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("Idempotency-Key tidak boleh kosong");
+        }
+        if (trimmed.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw new IllegalArgumentException("Idempotency-Key melebihi panjang maksimum 128 karakter");
+        }
+        return trimmed;
     }
 
     @GetMapping
