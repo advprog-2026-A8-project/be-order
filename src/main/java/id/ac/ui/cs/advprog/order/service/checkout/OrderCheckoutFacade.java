@@ -14,6 +14,10 @@ import java.util.concurrent.locks.ReentrantLock;
 @Component
 @RequiredArgsConstructor
 public class OrderCheckoutFacade {
+    private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
+    private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
+    private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
+
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
     private final OrderRepository orderRepository;
@@ -80,15 +84,15 @@ public class OrderCheckoutFacade {
 
     private void validateOrderRequest(Order order) {
         if (order == null) {
-            throw new IllegalArgumentException("Order tidak boleh null");
+            throw new IllegalArgumentException(MESSAGE_ORDER_NULL);
         }
 
         if (isBlank(order.getProductId()) || isBlank(order.getUserId())) {
-            throw new IllegalArgumentException("Product ID dan User ID tidak boleh kosong");
+            throw new IllegalArgumentException(MESSAGE_PRODUCT_USER_REQUIRED);
         }
 
         if (order.getJumlah() == null || order.getJumlah() <= 0) {
-            throw new IllegalArgumentException("Jumlah pesanan harus lebih dari 0");
+            throw new IllegalArgumentException(MESSAGE_INVALID_QUANTITY);
         }
     }
 
