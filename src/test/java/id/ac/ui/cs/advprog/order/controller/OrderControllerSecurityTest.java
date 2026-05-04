@@ -174,4 +174,17 @@ class OrderControllerSecurityTest {
                         .with(user("user-1").roles("TITIPER")))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void ratingEndpointShouldRejectDifferentTitiperIdentity() throws Exception {
+        mockMvc.perform(post("/api/orders/order-1/rating")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "userId", "user-2",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        )))
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
 }
