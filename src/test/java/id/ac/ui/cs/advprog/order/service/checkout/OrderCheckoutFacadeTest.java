@@ -17,6 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -181,5 +182,37 @@ class OrderCheckoutFacadeTest {
         when(orderRepository.findById("order-404")).thenReturn(java.util.Optional.empty());
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-1"));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyAndDifferentPayloadShouldThrow() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId("j1");
+        existingOrder.setAlamatPengiriman("alamat lama");
+
+        Order newPayload = new Order();
+        newPayload.setProductId("p1");
+        newPayload.setUserId("u1");
+        newPayload.setJumlah(3);
+        newPayload.setJastiperId("j1");
+        newPayload.setAlamatPengiriman("alamat lama");
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-1"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> checkoutFacade.checkout(newPayload, "idem-1")
+        );
+
+        assertTrue(ex.getMessage().contains("Idempotency key"));
+        verify(walletGateway, never()).debit(any(), any(Double.class));
+        verify(orderRepository, never()).save(any(Order.class));
     }
 }
