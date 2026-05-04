@@ -75,19 +75,13 @@ public class OrderController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<Order> updateOrderStatus(@PathVariable String id, @RequestParam String status) {
         Order updatedOrder = orderService.updateOrderStatus(id, status);
-        if (updatedOrder == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(updatedOrder);
+        return toOrderResponse(updatedOrder);
     }
 
     @PostMapping("/{id}/cancel")
     public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
         Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
-        if (cancelledOrder == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(cancelledOrder);
+        return toOrderResponse(cancelledOrder);
     }
 
     @GetMapping("/titiper/{userId}/active")
@@ -128,9 +122,13 @@ public class OrderController {
                 ratingRequest.getJastiperRating(),
                 ratingRequest.getProductRating()
         );
-        if (ratedOrder == null) {
+        return toOrderResponse(ratedOrder);
+    }
+
+    private ResponseEntity<Order> toOrderResponse(Order order) {
+        if (order == null) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(ratedOrder);
+        return ResponseEntity.ok(order);
     }
 }
