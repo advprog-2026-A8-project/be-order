@@ -17,14 +17,17 @@ import java.time.Instant;
 @Component
 @RequiredArgsConstructor
 public class RestAccessDeniedHandler implements AccessDeniedHandler {
+    private static final String ERROR_CODE = "FORBIDDEN";
+    private static final String ERROR_MESSAGE = "Forbidden";
+
     private final ObjectMapper objectMapper;
 
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException)
             throws IOException {
         ApiErrorResponse body = new ApiErrorResponse(
-                "FORBIDDEN",
-                "Forbidden",
+                ERROR_CODE,
+                ERROR_MESSAGE,
                 Instant.now(),
                 request.getRequestURI()
         );

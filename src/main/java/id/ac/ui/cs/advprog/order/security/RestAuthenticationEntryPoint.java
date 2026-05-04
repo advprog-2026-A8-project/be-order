@@ -17,14 +17,17 @@ import java.time.Instant;
 @Component
 @RequiredArgsConstructor
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
+    private static final String ERROR_CODE = "UNAUTHORIZED";
+    private static final String ERROR_MESSAGE = "Unauthorized";
+
     private final ObjectMapper objectMapper;
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
             throws IOException {
         ApiErrorResponse body = new ApiErrorResponse(
-                "UNAUTHORIZED",
-                "Unauthorized",
+                ERROR_CODE,
+                ERROR_MESSAGE,
                 Instant.now(),
                 request.getRequestURI()
         );
