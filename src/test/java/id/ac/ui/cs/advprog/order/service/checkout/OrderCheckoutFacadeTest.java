@@ -85,10 +85,12 @@ class OrderCheckoutFacadeTest {
     void checkoutShouldRejectWhenProductIdOrUserIdMissing() {
         order.setProductId(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger).logValidationFailed("missing_product_or_user");
 
         order.setProductId("p1");
         order.setUserId(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(2)).logValidationFailed("missing_product_or_user");
     }
 
     @Test
@@ -225,6 +227,7 @@ class OrderCheckoutFacadeTest {
         );
 
         assertTrue(ex.getMessage().contains("Idempotency key"));
+        verify(checkoutAuditLogger).logIdempotencyMismatch("idem-1", "order-100");
         verify(walletGateway, never()).debit(any(), any(Double.class));
         verify(orderRepository, never()).save(any(Order.class));
     }
