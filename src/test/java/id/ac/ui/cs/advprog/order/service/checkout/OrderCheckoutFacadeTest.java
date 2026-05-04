@@ -160,6 +160,11 @@ class OrderCheckoutFacadeTest {
     void checkoutWithExistingIdempotencyKeyShouldReturnExistingOrderWithoutChargingAgain() {
         Order existingOrder = new Order();
         existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId(null);
+        existingOrder.setAlamatPengiriman(null);
 
         when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-1"))

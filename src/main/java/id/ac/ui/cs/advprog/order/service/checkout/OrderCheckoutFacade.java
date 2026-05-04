@@ -9,6 +9,7 @@ import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Component
@@ -43,8 +44,12 @@ public class OrderCheckoutFacade {
         try {
             OrderIdempotency existingRecord = orderIdempotencyRepository.findById(idempotencyKey).orElse(null);
             if (existingRecord != null) {
-                return orderRepository.findById(existingRecord.getOrderId())
+                Order existingOrder = orderRepository.findById(existingRecord.getOrderId())
                         .orElseThrow(() -> new IllegalStateException("Order untuk idempotency key tidak ditemukan"));
+                if (!isSameCheckoutPayload(existingOrder, order)) {
+                    throw new IllegalStateException("Idempotency key sudah digunakan untuk payload order yang berbeda");
+                }
+                return existingOrder;
             }
 
             Order savedOrder = performCheckout(order);
@@ -98,5 +103,13 @@ public class OrderCheckoutFacade {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private boolean isSameCheckoutPayload(Order existingOrder, Order incomingOrder) {
+        return Objects.equals(existingOrder.getProductId(), incomingOrder.getProductId())
+                && Objects.equals(existingOrder.getUserId(), incomingOrder.getUserId())
+                && Objects.equals(existingOrder.getJastiperId(), incomingOrder.getJastiperId())
+                && Objects.equals(existingOrder.getJumlah(), incomingOrder.getJumlah())
+                && Objects.equals(existingOrder.getAlamatPengiriman(), incomingOrder.getAlamatPengiriman());
     }
 }
