@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.order.service;
 
+import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.exception.InvalidOrderTransitionException;
 import id.ac.ui.cs.advprog.order.model.Order;
@@ -12,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -125,6 +128,29 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<Order> findAdminActiveOrders() {
         return orderRepository.findByStatusIn(ACTIVE_STATUSES);
+    }
+
+    @Override
+    public AdminOrderSummaryResponse getAdminOrderSummary() {
+        List<Order> orders = orderRepository.findAll();
+        Map<String, Long> statusCounts = orders.stream()
+                .collect(Collectors.groupingBy(
+                        order -> order.getStatus().name(),
+                        Collectors.counting()
+                ));
+
+        long totalOrders = orders.size();
+        long activeOrders = orders.stream().filter(order -> ACTIVE_STATUSES.contains(order.getStatus())).count();
+        long completedOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.COMPLETED).count();
+        long cancelledOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.CANCELLED).count();
+
+        return new AdminOrderSummaryResponse(
+                totalOrders,
+                activeOrders,
+                completedOrders,
+                cancelledOrders,
+                statusCounts
+        );
     }
 
     @Override

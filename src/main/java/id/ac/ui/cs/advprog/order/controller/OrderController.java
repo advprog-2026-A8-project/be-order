@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.order.controller;
 
+import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.dto.OrderRequest;
 import id.ac.ui.cs.advprog.order.dto.RatingRequest;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
@@ -112,6 +113,11 @@ public class OrderController {
     @GetMapping("/admin/active")
     public ResponseEntity<List<Order>> getAdminActiveOrders() {
         return ResponseEntity.ok(orderService.findAdminActiveOrders());
+    }
+
+    @GetMapping("/admin/summary")
+    public ResponseEntity<AdminOrderSummaryResponse> getAdminOrderSummary() {
+        return ResponseEntity.ok(orderService.getAdminOrderSummary());
     }
 
     @PostMapping("/{id}/rating")
