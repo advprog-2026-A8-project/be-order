@@ -134,7 +134,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<Order> findAdminOrdersByStatus(String status) {
         try {
-            OrderStatus parsedStatus = OrderStatus.valueOf(status.toUpperCase());
+            OrderStatus parsedStatus = parseOrderStatus(status);
             return orderRepository.findByStatusIn(List.of(parsedStatus));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid status: " + status);
@@ -170,6 +170,10 @@ public class OrderServiceImpl implements OrderService {
 
     private long countOrders(List<Order> orders, Predicate<Order> predicate) {
         return orders.stream().filter(predicate).count();
+    }
+
+    private OrderStatus parseOrderStatus(String status) {
+        return OrderStatus.valueOf(status.trim().toUpperCase());
     }
 
     @Override

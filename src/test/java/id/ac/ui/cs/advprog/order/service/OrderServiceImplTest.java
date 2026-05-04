@@ -366,7 +366,19 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusShouldNormalizeInput() {
+        order.setStatus(OrderStatus.PAID);
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+
+        List<Order> result = orderService.findAdminOrdersByStatus(" paid ");
+
+        assertEquals(1, result.size());
+        assertEquals(OrderStatus.PAID, result.get(0).getStatus());
+    }
+
+    @Test
     void testGetAdminOrdersByStatusInvalidShouldThrow() {
         assertThrows(IllegalArgumentException.class, () -> orderService.findAdminOrdersByStatus("INVALID"));
     }
+
 }
