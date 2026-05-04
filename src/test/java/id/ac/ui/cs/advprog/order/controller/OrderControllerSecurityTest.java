@@ -3,6 +3,8 @@ package id.ac.ui.cs.advprog.order.controller;
 import id.ac.ui.cs.advprog.order.config.SecurityConfig;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.security.OrderAccessGuard;
+import id.ac.ui.cs.advprog.order.security.RestAccessDeniedHandler;
+import id.ac.ui.cs.advprog.order.security.RestAuthenticationEntryPoint;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +26,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebMvcTest(OrderController.class)
-@Import({SecurityConfig.class, OrderAccessGuard.class})
+@Import({
+        SecurityConfig.class,
+        OrderAccessGuard.class,
+        RestAuthenticationEntryPoint.class,
+        RestAccessDeniedHandler.class
+})
 class OrderControllerSecurityTest {
 
     @Autowired
