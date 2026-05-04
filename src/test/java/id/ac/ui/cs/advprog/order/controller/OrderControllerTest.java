@@ -325,6 +325,20 @@ class OrderControllerTest {
     }
 
     @Test
+    void testGetAdminActiveOrdersPagedWithSortingShouldRejectInvalidSortBy() throws Exception {
+        when(orderService.findAdminActiveOrdersPaged(0, 10, "createdAt", "asc"))
+                .thenThrow(new IllegalArgumentException("SortBy tidak valid"));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "10")
+                        .param("sortBy", "createdAt")
+                        .param("direction", "asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
     void testGetAdminActiveOrdersPagedShouldRejectNegativePage() throws Exception {
         when(orderService.findAdminActiveOrdersPaged(-1, 10, "id", "asc"))
                 .thenThrow(new IllegalArgumentException("Page tidak boleh negatif"));

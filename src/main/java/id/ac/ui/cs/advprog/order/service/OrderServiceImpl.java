@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
     private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper tidak valid untuk update statistik.";
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
 
     private final OrderRepository orderRepository;
@@ -215,6 +217,9 @@ public class OrderServiceImpl implements OrderService {
         String normalizedSortBy = (sortBy == null || sortBy.isBlank()) ? "id" : sortBy.trim();
         String normalizedDirection = (direction == null || direction.isBlank()) ? "asc" : direction.trim().toLowerCase();
 
+        if (!ALLOWED_SORT_FIELDS.contains(normalizedSortBy)) {
+            throw new IllegalArgumentException("SortBy tidak valid");
+        }
         if (!normalizedDirection.equals("asc") && !normalizedDirection.equals("desc")) {
             throw new IllegalArgumentException("Direction harus asc atau desc");
         }

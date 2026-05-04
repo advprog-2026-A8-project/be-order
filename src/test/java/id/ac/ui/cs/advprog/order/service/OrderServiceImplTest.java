@@ -443,4 +443,10 @@ class OrderServiceImplTest {
         assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
     }
 
+    @Test
+    void testGetAdminActiveOrdersPagedWithSortingShouldRejectInvalidSortBy() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminActiveOrdersPaged(0, 10, "createdAt", "asc"));
+    }
+
 }
