@@ -13,6 +13,7 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class ProfileRestAdapter implements ProfileGateway {
+    private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
 
     private final RestTemplate restTemplate;
 
@@ -26,19 +27,23 @@ public class ProfileRestAdapter implements ProfileGateway {
                              String productId,
                              int jastiperRating,
                              int productRating) {
-        String ratingUrl = UriComponentsBuilder.fromUriString(profileUrl)
+        String statsUrl = UriComponentsBuilder.fromUriString(profileUrl)
                 .pathSegment("admin", "jastiper", "stats")
                 .toUriString();
 
-        Map<String, Object> payload = Map.of(
-                "userId", Long.parseLong(jastiperId),
-                "delta", 1L
-        );
-
         try {
-            restTemplate.put(ratingUrl, payload);
+            restTemplate.put(statsUrl, buildStatsPayload(jastiperId));
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
         } catch (HttpClientErrorException ex) {
             throw new IllegalStateException("Gagal mengirim rating ke Profile module", ex);
         }
+    }
+
+    private Map<String, Object> buildStatsPayload(String jastiperId) {
+        return Map.of(
+                "userId", Long.parseLong(jastiperId),
+                "delta", SUCCESSFUL_TRANSACTION_DELTA
+        );
     }
 }
