@@ -14,6 +14,7 @@ import org.springframework.web.client.RestTemplate;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -34,16 +35,19 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingSuccess() {
-        adapter.submitRating("o1", "u1", "j1", "p1", 5, 4);
-        verify(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+        verify(restTemplate).put(
+                eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
+                argThat(body -> body != null)
+        );
     }
 
     @Test
     void submitRatingFailureShouldThrow() {
         doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
-                .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+                .when(restTemplate).put(anyString(), any());
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "u1", "j1", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
     }
 }
