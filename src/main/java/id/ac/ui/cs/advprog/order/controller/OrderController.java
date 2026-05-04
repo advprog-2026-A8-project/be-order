@@ -106,11 +106,13 @@ public class OrderController {
     }
 
     @GetMapping("/jastiper/{jastiperId}/processing")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<List<Order>> getJastiperProcessingOrders(@PathVariable String jastiperId) {
         return ResponseEntity.ok(orderService.findJastiperProcessingOrders(jastiperId));
     }
 
     @GetMapping("/jastiper/{jastiperId}/completed")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<List<Order>> getJastiperCompletedOrders(@PathVariable String jastiperId) {
         return ResponseEntity.ok(orderService.findJastiperCompletedOrders(jastiperId));
     }

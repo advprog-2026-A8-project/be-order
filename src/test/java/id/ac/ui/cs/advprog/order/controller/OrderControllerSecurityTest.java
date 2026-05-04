@@ -102,4 +102,18 @@ class OrderControllerSecurityTest {
                         .with(user("jastiper-1").roles("JASTIPER")))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void jastiperProcessingEndpointShouldRejectDifferentJastiperIdentity() throws Exception {
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-2/processing")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void jastiperCompletedEndpointShouldRejectDifferentJastiperIdentity() throws Exception {
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-2/completed")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
 }
