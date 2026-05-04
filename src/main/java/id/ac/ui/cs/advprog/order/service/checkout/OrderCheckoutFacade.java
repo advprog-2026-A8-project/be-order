@@ -18,6 +18,9 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
     private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
     private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
+    private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
+    private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
+            "Idempotency key sudah digunakan untuk payload order yang berbeda";
 
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
@@ -45,9 +48,9 @@ public class OrderCheckoutFacade {
             OrderIdempotency existingRecord = orderIdempotencyRepository.findById(idempotencyKey).orElse(null);
             if (existingRecord != null) {
                 Order existingOrder = orderRepository.findById(existingRecord.getOrderId())
-                        .orElseThrow(() -> new IllegalStateException("Order untuk idempotency key tidak ditemukan"));
-                if (!isSameCheckoutPayload(existingOrder, order)) {
-                    throw new IllegalStateException("Idempotency key sudah digunakan untuk payload order yang berbeda");
+                        .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
+                if (!hasSameCheckoutPayload(existingOrder, order)) {
+                    throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
                 }
                 return existingOrder;
             }
@@ -105,7 +108,7 @@ public class OrderCheckoutFacade {
         return value == null || value.isBlank();
     }
 
-    private boolean isSameCheckoutPayload(Order existingOrder, Order incomingOrder) {
+    private boolean hasSameCheckoutPayload(Order existingOrder, Order incomingOrder) {
         return Objects.equals(existingOrder.getProductId(), incomingOrder.getProductId())
                 && Objects.equals(existingOrder.getUserId(), incomingOrder.getUserId())
                 && Objects.equals(existingOrder.getJastiperId(), incomingOrder.getJastiperId())
