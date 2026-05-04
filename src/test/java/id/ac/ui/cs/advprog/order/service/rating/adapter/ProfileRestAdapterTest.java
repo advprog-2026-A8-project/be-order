@@ -12,6 +12,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Objects;
+
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -41,7 +43,7 @@ class ProfileRestAdapterTest {
         adapter.submitRating("o1", "1", "10", "p1", 5, 4);
         verify(restTemplate).put(
                 eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
-                argThat(body -> body != null)
+                argThat(Objects::nonNull)
         );
     }
 
