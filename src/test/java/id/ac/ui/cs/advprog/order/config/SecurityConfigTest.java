@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
+import id.ac.ui.cs.advprog.order.security.RestAccessDeniedHandler;
+import id.ac.ui.cs.advprog.order.security.RestAuthenticationEntryPoint;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.Map;
@@ -14,7 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SecurityConfigTest {
 
-    private final SecurityConfig securityConfig = new SecurityConfig();
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final SecurityConfig securityConfig = new SecurityConfig(
+            new RestAuthenticationEntryPoint(objectMapper),
+            new RestAccessDeniedHandler(objectMapper)
+    );
 
     @Test
     void jwtConverterShouldMapRolesClaimList() {
@@ -51,4 +58,3 @@ class SecurityConfigTest {
         );
     }
 }
-
