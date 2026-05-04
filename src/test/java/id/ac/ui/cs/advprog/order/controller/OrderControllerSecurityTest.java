@@ -1,0 +1,62 @@
+package id.ac.ui.cs.advprog.order.controller;
+
+import id.ac.ui.cs.advprog.order.config.SecurityConfig;
+import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.service.OrderService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(OrderController.class)
+@Import(SecurityConfig.class)
+class OrderControllerSecurityTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private OrderService orderService;
+
+    @Test
+    void adminEndpointShouldRejectNonAdminRole() throws Exception {
+        mockMvc.perform(get("/api/orders/admin/active")
+                        .with(user("titiper-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminEndpointShouldAllowAdminRole() throws Exception {
+        when(orderService.findAdminActiveOrders()).thenReturn(List.of(new Order()));
+
+        mockMvc.perform(get("/api/orders/admin/active")
+                        .with(user("admin-1").roles("ADMIN")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void titiperHistoryEndpointShouldRejectJastiperRole() throws Exception {
+        mockMvc.perform(get("/api/orders/titiper/user-1/history")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void titiperHistoryEndpointShouldAllowTitiperRole() throws Exception {
+        when(orderService.findTitiperOrderHistory("user-1")).thenReturn(List.of(new Order()));
+
+        mockMvc.perform(get("/api/orders/titiper/user-1/history")
+                        .with(user("titiper-1").roles("TITIPER")))
+                .andExpect(status().isOk());
+    }
+}
+
