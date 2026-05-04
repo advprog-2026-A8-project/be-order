@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -84,6 +85,33 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.message").exists())
                 .andExpect(jsonPath("$.timestamp").exists())
                 .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+    }
+
+    @Test
+    void testCheckoutShouldRejectBlankIdempotencyKey() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", "   ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+
+        verify(orderService, never()).createOrder(any(Order.class), anyString());
+    }
+
+    @Test
+    void testCheckoutShouldRejectTooLongIdempotencyKey() throws Exception {
+        String tooLongKey = "k".repeat(129);
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", tooLongKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+
+        verify(orderService, never()).createOrder(any(Order.class), anyString());
     }
 
     @Test
