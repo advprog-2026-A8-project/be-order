@@ -43,6 +43,9 @@ class OrderCheckoutFacadeTest {
     @Mock
     private CheckoutLockManager checkoutLockManager;
 
+    @Mock
+    private CheckoutAuditLogger checkoutAuditLogger;
+
     @InjectMocks
     private OrderCheckoutFacade checkoutFacade;
 
@@ -73,6 +76,9 @@ class OrderCheckoutFacadeTest {
         assertEquals(OrderStatus.PAID, result.getStatus());
         verify(walletGateway).debit("u1", 10000.0);
         verify(inventoryGateway).reduceStock("p1", 2);
+        verify(checkoutAuditLogger).logCheckoutStarted(order, null);
+        verify(checkoutAuditLogger).logDebitSucceeded("u1", 10000.0);
+        verify(checkoutAuditLogger).logStockReductionSucceeded("p1", 2);
     }
 
     @Test
@@ -136,6 +142,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(walletGateway).refund("u1", 10000.0);
+        verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, "inventory_reduce_failed");
     }
 
     @Test
