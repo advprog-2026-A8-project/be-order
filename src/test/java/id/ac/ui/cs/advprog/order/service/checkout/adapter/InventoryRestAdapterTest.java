@@ -156,4 +156,30 @@ class InventoryRestAdapterTest {
 
         assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
     }
+
+    @Test
+    void reduceStockShouldThrowWhenUpdatedStockNegative() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(1);
+        when(restTemplate.getForObject(eq("http://localhost:8081/api/products/p1"), eq(InventoryResponse.class)))
+                .thenReturn(product);
+
+        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
+    }
+
+    @Test
+    void reduceStockShouldSupportNullStockAndPriceFallback() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(null);
+        product.setProductQuantity(null);
+        when(restTemplate.getForObject(eq("http://localhost:8081/api/products/p1"), eq(InventoryResponse.class)))
+                .thenReturn(product);
+
+        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 1));
+    }
 }

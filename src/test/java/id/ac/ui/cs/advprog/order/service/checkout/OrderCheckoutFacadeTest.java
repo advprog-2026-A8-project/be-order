@@ -104,15 +104,24 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldRejectWhenOrderNull() {
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(null));
+        verify(checkoutAuditLogger).logValidationFailed("order_null");
+    }
+
+    @Test
     void checkoutShouldRejectWhenJumlahInvalid() {
         order.setJumlah(0);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger).logValidationFailed("invalid_quantity");
 
         order.setJumlah(-1);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(2)).logValidationFailed("invalid_quantity");
 
         order.setJumlah(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(3)).logValidationFailed("invalid_quantity");
     }
 
     @Test

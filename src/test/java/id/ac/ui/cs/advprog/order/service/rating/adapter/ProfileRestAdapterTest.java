@@ -74,4 +74,10 @@ class ProfileRestAdapterTest {
         assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "10", "p1", 5, 4));
     }
+
+    @Test
+    void submitRatingShouldThrowWhenJastiperIdInvalid() {
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "not-number", "p1", 5, 4));
+    }
 }
