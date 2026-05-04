@@ -17,6 +17,7 @@ public interface OrderService {
     List<Order> findJastiperProcessingOrders(String jastiperId);
     List<Order> findJastiperCompletedOrders(String jastiperId);
     List<Order> findAdminActiveOrders();
+    List<Order> findAdminOrdersByStatus(String status);
     AdminOrderSummaryResponse getAdminOrderSummary();
     Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating);
 }

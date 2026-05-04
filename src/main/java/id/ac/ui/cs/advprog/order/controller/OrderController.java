@@ -115,6 +115,11 @@ public class OrderController {
         return ResponseEntity.ok(orderService.findAdminActiveOrders());
     }
 
+    @GetMapping("/admin/by-status")
+    public ResponseEntity<List<Order>> getAdminOrdersByStatus(@RequestParam String status) {
+        return ResponseEntity.ok(orderService.findAdminOrdersByStatus(status));
+    }
+
     @GetMapping("/admin/summary")
     public ResponseEntity<AdminOrderSummaryResponse> getAdminOrderSummary() {
         return ResponseEntity.ok(orderService.getAdminOrderSummary());

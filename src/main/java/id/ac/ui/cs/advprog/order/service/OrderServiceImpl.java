@@ -132,6 +132,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public List<Order> findAdminOrdersByStatus(String status) {
+        try {
+            OrderStatus parsedStatus = OrderStatus.valueOf(status.toUpperCase());
+            return orderRepository.findByStatusIn(List.of(parsedStatus));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid status: " + status);
+        }
+    }
+
+    @Override
     public AdminOrderSummaryResponse getAdminOrderSummary() {
         List<Order> orders = orderRepository.findAll();
         Map<String, Long> statusCounts = groupStatusCounts(orders);
