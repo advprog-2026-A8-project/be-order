@@ -2,6 +2,7 @@ package id.ac.ui.cs.advprog.order.controller;
 
 import id.ac.ui.cs.advprog.order.config.SecurityConfig;
 import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.security.OrderAccessGuard;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(OrderController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, OrderAccessGuard.class})
 class OrderControllerSecurityTest {
 
     @Autowired
@@ -68,5 +69,21 @@ class OrderControllerSecurityTest {
         mockMvc.perform(get("/api/orders/titiper/user-2/history")
                         .with(user("user-1").roles("TITIPER")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void titiperActiveEndpointShouldRejectDifferentTitiperIdentity() throws Exception {
+        mockMvc.perform(get("/api/orders/titiper/user-2/active")
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void titiperActiveEndpointShouldAllowOwnerTitiper() throws Exception {
+        when(orderService.findTitiperActiveOrders("user-1")).thenReturn(List.of(new Order()));
+
+        mockMvc.perform(get("/api/orders/titiper/user-1/active")
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isOk());
     }
 }

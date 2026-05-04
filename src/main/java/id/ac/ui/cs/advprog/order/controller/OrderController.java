@@ -88,12 +88,13 @@ public class OrderController {
     }
 
     @GetMapping("/titiper/{userId}/active")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #userId)")
     public ResponseEntity<List<Order>> getTitiperActiveOrders(@PathVariable String userId) {
         return ResponseEntity.ok(orderService.findTitiperActiveOrders(userId));
     }
 
     @GetMapping("/titiper/{userId}/history")
-    @PreAuthorize("authentication.name == #userId")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #userId)")
     public ResponseEntity<List<Order>> getTitiperOrderHistory(@PathVariable String userId) {
         return ResponseEntity.ok(orderService.findTitiperOrderHistory(userId));
     }
