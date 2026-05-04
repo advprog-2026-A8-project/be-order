@@ -74,28 +74,20 @@ public class OrderController {
 
     @PatchMapping("/{id}/status")
     public ResponseEntity<Order> updateOrderStatus(@PathVariable String id, @RequestParam String status) {
-        try {
-            Order updatedOrder = orderService.updateOrderStatus(id, status);
-            if (updatedOrder == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(updatedOrder);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+        Order updatedOrder = orderService.updateOrderStatus(id, status);
+        if (updatedOrder == null) {
+            return ResponseEntity.notFound().build();
         }
+        return ResponseEntity.ok(updatedOrder);
     }
 
     @PostMapping("/{id}/cancel")
     public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
-        try {
-            Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
-            if (cancelledOrder == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(cancelledOrder);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+        Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
+        if (cancelledOrder == null) {
+            return ResponseEntity.notFound().build();
         }
+        return ResponseEntity.ok(cancelledOrder);
     }
 
     @GetMapping("/titiper/{userId}/active")
@@ -130,19 +122,15 @@ public class OrderController {
 
     @PostMapping("/{id}/rating")
     public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
-        try {
-            Order ratedOrder = orderService.submitOrderRating(
-                    id,
-                    ratingRequest.getUserId(),
-                    ratingRequest.getJastiperRating(),
-                    ratingRequest.getProductRating()
-            );
-            if (ratedOrder == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(ratedOrder);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
+        Order ratedOrder = orderService.submitOrderRating(
+                id,
+                ratingRequest.getUserId(),
+                ratingRequest.getJastiperRating(),
+                ratingRequest.getProductRating()
+        );
+        if (ratedOrder == null) {
+            return ResponseEntity.notFound().build();
         }
+        return ResponseEntity.ok(ratedOrder);
     }
 }

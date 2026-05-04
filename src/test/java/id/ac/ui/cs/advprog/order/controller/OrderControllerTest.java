@@ -292,14 +292,14 @@ class OrderControllerTest {
 
     @Test
     void testSubmitRatingBadRequest() throws Exception {
-        when(orderService.submitOrderRating("order-123", "user-def", 6, 4))
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4))
                 .thenThrow(new IllegalArgumentException("invalid"));
 
         mockMvc.perform(post("/api/orders/order-123/rating")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(Map.of(
                                 "userId", "user-def",
-                                "jastiperRating", 6,
+                                "jastiperRating", 5,
                                 "productRating", 4
                         ))))
                 .andExpect(status().isBadRequest())
