@@ -12,6 +12,7 @@ import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -135,8 +136,14 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Page<Order> findAdminActiveOrdersPaged(int page, int size) {
+        return findAdminActiveOrdersPaged(page, size, "id", "asc");
+    }
+
+    @Override
+    public Page<Order> findAdminActiveOrdersPaged(int page, int size, String sortBy, String direction) {
         validatePagination(page, size);
-        return orderRepository.findByStatusIn(ACTIVE_STATUSES, PageRequest.of(page, size));
+        Sort sort = buildSort(sortBy, direction);
+        return orderRepository.findByStatusIn(ACTIVE_STATUSES, PageRequest.of(page, size, sort));
     }
 
     @Override
@@ -202,6 +209,18 @@ public class OrderServiceImpl implements OrderService {
         if (size <= 0) {
             throw new IllegalArgumentException("Size harus lebih dari 0");
         }
+    }
+
+    private Sort buildSort(String sortBy, String direction) {
+        String normalizedSortBy = (sortBy == null || sortBy.isBlank()) ? "id" : sortBy.trim();
+        String normalizedDirection = (direction == null || direction.isBlank()) ? "asc" : direction.trim().toLowerCase();
+
+        if (!normalizedDirection.equals("asc") && !normalizedDirection.equals("desc")) {
+            throw new IllegalArgumentException("Direction harus asc atau desc");
+        }
+
+        Sort.Direction sortDirection = normalizedDirection.equals("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
+        return Sort.by(sortDirection, normalizedSortBy);
     }
 
     @Override

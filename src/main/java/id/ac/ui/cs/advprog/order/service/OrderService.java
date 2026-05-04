@@ -20,6 +20,7 @@ public interface OrderService {
     List<Order> findJastiperCompletedOrders(String jastiperId);
     List<Order> findAdminActiveOrders();
     Page<Order> findAdminActiveOrdersPaged(int page, int size);
+    Page<Order> findAdminActiveOrdersPaged(int page, int size, String sortBy, String direction);
     List<Order> findAdminOrdersByStatus(String status);
     Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size);
     AdminOrderSummaryResponse getAdminOrderSummary();

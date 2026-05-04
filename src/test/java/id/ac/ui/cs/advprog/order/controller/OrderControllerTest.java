@@ -298,7 +298,8 @@ class OrderControllerTest {
     @Test
     void testGetAdminActiveOrdersPaged() throws Exception {
         order.setStatus(OrderStatus.PAID);
-        when(orderService.findAdminActiveOrdersPaged(0, 10)).thenReturn(new PageImpl<>(Arrays.asList(order)));
+        when(orderService.findAdminActiveOrdersPaged(0, 10, "id", "asc"))
+                .thenReturn(new PageImpl<>(Arrays.asList(order)));
 
         mockMvc.perform(get("/api/orders/admin/active/paged")
                         .param("page", "0")
@@ -325,7 +326,7 @@ class OrderControllerTest {
 
     @Test
     void testGetAdminActiveOrdersPagedShouldRejectNegativePage() throws Exception {
-        when(orderService.findAdminActiveOrdersPaged(-1, 10))
+        when(orderService.findAdminActiveOrdersPaged(-1, 10, "id", "asc"))
                 .thenThrow(new IllegalArgumentException("Page tidak boleh negatif"));
 
         mockMvc.perform(get("/api/orders/admin/active/paged")
@@ -337,7 +338,7 @@ class OrderControllerTest {
 
     @Test
     void testGetAdminActiveOrdersPagedShouldRejectNonPositiveSize() throws Exception {
-        when(orderService.findAdminActiveOrdersPaged(0, 0))
+        when(orderService.findAdminActiveOrdersPaged(0, 0, "id", "asc"))
                 .thenThrow(new IllegalArgumentException("Size harus lebih dari 0"));
 
         mockMvc.perform(get("/api/orders/admin/active/paged")
