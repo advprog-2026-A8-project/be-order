@@ -27,20 +27,16 @@ public class ProfileRestAdapter implements ProfileGateway {
                              int jastiperRating,
                              int productRating) {
         String ratingUrl = UriComponentsBuilder.fromUriString(profileUrl)
-                .pathSegment("ratings")
+                .pathSegment("admin", "jastiper", "stats")
                 .toUriString();
 
         Map<String, Object> payload = Map.of(
-                "orderId", orderId,
-                "titiperId", titiperId,
-                "jastiperId", jastiperId,
-                "productId", productId,
-                "jastiperRating", jastiperRating,
-                "productRating", productRating
+                "userId", Long.parseLong(jastiperId),
+                "delta", 1L
         );
 
         try {
-            restTemplate.postForEntity(ratingUrl, payload, Void.class);
+            restTemplate.put(ratingUrl, payload);
         } catch (HttpClientErrorException ex) {
             throw new IllegalStateException("Gagal mengirim rating ke Profile module", ex);
         }
