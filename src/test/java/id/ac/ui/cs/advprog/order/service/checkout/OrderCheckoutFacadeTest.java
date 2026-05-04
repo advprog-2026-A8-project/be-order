@@ -85,12 +85,13 @@ class OrderCheckoutFacadeTest {
     void checkoutShouldRejectWhenProductIdOrUserIdMissing() {
         order.setProductId(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger).logValidationFailed("missing_product_or_user");
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_MISSING_PRODUCT_OR_USER);
 
         order.setProductId("p1");
         order.setUserId(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger, times(2)).logValidationFailed("missing_product_or_user");
+        verify(checkoutAuditLogger, times(2))
+                .logValidationFailed(CheckoutAuditReason.VALIDATION_MISSING_PRODUCT_OR_USER);
     }
 
     @Test
@@ -106,22 +107,22 @@ class OrderCheckoutFacadeTest {
     @Test
     void checkoutShouldRejectWhenOrderNull() {
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(null));
-        verify(checkoutAuditLogger).logValidationFailed("order_null");
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_ORDER_NULL);
     }
 
     @Test
     void checkoutShouldRejectWhenJumlahInvalid() {
         order.setJumlah(0);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger).logValidationFailed("invalid_quantity");
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
 
         order.setJumlah(-1);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger, times(2)).logValidationFailed("invalid_quantity");
+        verify(checkoutAuditLogger, times(2)).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
 
         order.setJumlah(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger, times(3)).logValidationFailed("invalid_quantity");
+        verify(checkoutAuditLogger, times(3)).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
     }
 
     @Test
@@ -129,12 +130,12 @@ class OrderCheckoutFacadeTest {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger).logValidationFailed("insufficient_stock");
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
 
         product.setProductQuantity(1);
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(checkoutAuditLogger, times(2)).logValidationFailed("insufficient_stock");
+        verify(checkoutAuditLogger, times(2)).logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
     }
 
     @Test
@@ -145,7 +146,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
-        verify(checkoutAuditLogger).logValidationFailed("wallet_debit_failed");
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_WALLET_DEBIT_FAILED);
     }
 
     @Test
@@ -156,7 +157,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(walletGateway).refund("u1", 10000.0);
-        verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, "inventory_reduce_failed");
+        verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
     }
 
     @Test
