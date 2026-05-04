@@ -27,7 +27,7 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/checkout")
-    @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.isOwnerOfRequestedUser(authentication, #orderRequest.userId)")
+    @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.canCheckoutForRequestUser(authentication, #orderRequest)")
     public ResponseEntity<Order> checkout(
             @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey

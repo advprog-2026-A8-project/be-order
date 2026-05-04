@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.order.security;
 
+import id.ac.ui.cs.advprog.order.dto.OrderRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -29,5 +30,17 @@ class OrderAccessGuardTest {
         assertTrue(guard.isOwnerOfRequestedUser(auth, "user-1"));
         assertFalse(guard.isOwnerOfRequestedUser(auth, "user-2"));
     }
-}
 
+    @Test
+    void canCheckoutForRequestUserShouldValidateOwnershipAndRequestPresence() {
+        Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
+        OrderRequest request = new OrderRequest();
+        request.setUserId("user-1");
+
+        assertTrue(guard.canCheckoutForRequestUser(auth, request));
+
+        request.setUserId("user-2");
+        assertFalse(guard.canCheckoutForRequestUser(auth, request));
+        assertFalse(guard.canCheckoutForRequestUser(auth, null));
+    }
+}
