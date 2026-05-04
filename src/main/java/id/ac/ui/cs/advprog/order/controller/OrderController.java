@@ -100,6 +100,7 @@ public class OrderController {
     }
 
     @GetMapping("/jastiper/{jastiperId}/todo")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<List<Order>> getJastiperTodoOrders(@PathVariable String jastiperId) {
         return ResponseEntity.ok(orderService.findJastiperTodoOrders(jastiperId));
     }
