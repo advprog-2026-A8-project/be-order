@@ -15,8 +15,10 @@ import org.springframework.web.client.RestTemplate;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,14 +57,40 @@ class InventoryRestAdapterTest {
 
     @Test
     void reduceStockSuccess() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(10);
+
+        when(restTemplate.getForObject(eq("http://localhost:8081/api/products/p1"), eq(InventoryResponse.class)))
+                .thenReturn(product);
+
         adapter.reduceStock("p1", 2);
-        verify(restTemplate).put(anyString(), eq((Object) null));
+
+        inOrder(restTemplate).verify(restTemplate).getForObject(
+                eq("http://localhost:8081/api/products/p1"),
+                eq(InventoryResponse.class)
+        );
+        inOrder(restTemplate).verify(restTemplate).put(
+                eq("http://localhost:8081/api/products/update/p1"),
+                argThat(body -> body != null)
+        );
     }
 
     @Test
     void reduceStockFailureShouldThrow() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(10);
+
+        when(restTemplate.getForObject(eq("http://localhost:8081/api/products/p1"), eq(InventoryResponse.class)))
+                .thenReturn(product);
+
         doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
-                .when(restTemplate).put(anyString(), eq((Object) null));
+                .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(body -> body != null));
 
         assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
     }
