@@ -25,9 +25,7 @@ public class OrderCheckoutFacade {
     }
 
     public Order checkout(Order order, String idempotencyKey) {
-        if (order.getProductId() == null || order.getUserId() == null) {
-            throw new IllegalArgumentException("Product ID dan User ID tidak boleh kosong");
-        }
+        validateOrderRequest(order);
 
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             return checkoutWithIdempotency(order, idempotencyKey.trim());
@@ -78,5 +76,23 @@ public class OrderCheckoutFacade {
         } finally {
             lock.unlock();
         }
+    }
+
+    private void validateOrderRequest(Order order) {
+        if (order == null) {
+            throw new IllegalArgumentException("Order tidak boleh null");
+        }
+
+        if (isBlank(order.getProductId()) || isBlank(order.getUserId())) {
+            throw new IllegalArgumentException("Product ID dan User ID tidak boleh kosong");
+        }
+
+        if (order.getJumlah() == null || order.getJumlah() <= 0) {
+            throw new IllegalArgumentException("Jumlah pesanan harus lebih dari 0");
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
