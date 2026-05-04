@@ -255,6 +255,21 @@ class OrderControllerTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPaged() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5))
+                .thenReturn(new PageImpl<>(Arrays.asList(order)));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("order-123"))
+                .andExpect(jsonPath("$.content[0].status").value("PAID"));
+    }
+
+    @Test
     void testGetAdminActiveOrdersPaged() throws Exception {
         order.setStatus(OrderStatus.PAID);
         when(orderService.findAdminActiveOrdersPaged(0, 10)).thenReturn(new PageImpl<>(Arrays.asList(order)));

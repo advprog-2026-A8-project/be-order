@@ -385,6 +385,18 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPagedSuccess() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), eq(PageRequest.of(0, 5)))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminOrdersByStatusPaged("PAID", 0, 5);
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
     void testGetAdminActiveOrdersPaged() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));
