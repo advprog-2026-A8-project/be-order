@@ -26,12 +26,16 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+    private static final String ROLE_PREFIX = "ROLE_";
+    private static final String EMPTY = "";
+
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // Safe for this service: API is stateless and uses JWT bearer auth, not cookie-based sessions.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex
@@ -76,7 +80,7 @@ public class SecurityConfig {
 
         return allRoles.stream()
                 .map(this::normalizeRoleName)
-                .filter(role -> !role.equals("ROLE_"))
+                .filter(role -> !role.equals(ROLE_PREFIX))
                 .distinct()
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
@@ -84,12 +88,12 @@ public class SecurityConfig {
 
     private String normalizeRoleName(String role) {
         if (role == null) {
-            return "";
+            return EMPTY;
         }
         String trimmed = role.trim();
         if (trimmed.isEmpty()) {
-            return "";
+            return EMPTY;
         }
-        return trimmed.startsWith("ROLE_") ? trimmed : "ROLE_" + trimmed;
+        return trimmed.startsWith(ROLE_PREFIX) ? trimmed : ROLE_PREFIX + trimmed;
     }
 }
