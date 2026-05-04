@@ -268,6 +268,30 @@ class OrderControllerTest {
     }
 
     @Test
+    void testGetAdminActiveOrdersPagedShouldRejectNegativePage() throws Exception {
+        when(orderService.findAdminActiveOrdersPaged(-1, 10))
+                .thenThrow(new IllegalArgumentException("Page tidak boleh negatif"));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "-1")
+                        .param("size", "10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldRejectNonPositiveSize() throws Exception {
+        when(orderService.findAdminActiveOrdersPaged(0, 0))
+                .thenThrow(new IllegalArgumentException("Size harus lebih dari 0"));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
     void testGetTitiperHistoryOrders() throws Exception {
         when(orderService.findTitiperOrderHistory("user-def")).thenReturn(Arrays.asList(order));
 

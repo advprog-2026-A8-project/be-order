@@ -388,12 +388,22 @@ class OrderServiceImplTest {
     void testGetAdminActiveOrdersPaged() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));
-        when(orderRepository.findAll(PageRequest.of(0, 10))).thenReturn(page);
+        when(orderRepository.findByStatusIn(any(), eq(PageRequest.of(0, 10)))).thenReturn(page);
 
         Page<Order> result = orderService.findAdminActiveOrdersPaged(0, 10);
 
         assertEquals(1, result.getTotalElements());
         assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldThrowWhenPageNegative() {
+        assertThrows(IllegalArgumentException.class, () -> orderService.findAdminActiveOrdersPaged(-1, 10));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldThrowWhenSizeNotPositive() {
+        assertThrows(IllegalArgumentException.class, () -> orderService.findAdminActiveOrdersPaged(0, 0));
     }
 
 }

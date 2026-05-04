@@ -135,7 +135,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Page<Order> findAdminActiveOrdersPaged(int page, int size) {
-        return orderRepository.findAll(PageRequest.of(page, size));
+        validatePagination(page, size);
+        return orderRepository.findByStatusIn(ACTIVE_STATUSES, PageRequest.of(page, size));
     }
 
     @Override
@@ -181,6 +182,15 @@ public class OrderServiceImpl implements OrderService {
 
     private OrderStatus parseOrderStatus(String status) {
         return OrderStatus.valueOf(status.trim().toUpperCase());
+    }
+
+    private void validatePagination(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page tidak boleh negatif");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Size harus lebih dari 0");
+        }
     }
 
     @Override
