@@ -353,4 +353,20 @@ class OrderServiceImplTest {
         assertEquals(0L, summary.getCancelledOrders());
         assertEquals(0, summary.getStatusCounts().size());
     }
+
+    @Test
+    void testGetAdminOrdersByStatusSuccess() {
+        order.setStatus(OrderStatus.PAID);
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+
+        List<Order> result = orderService.findAdminOrdersByStatus("PAID");
+
+        assertEquals(1, result.size());
+        assertEquals(OrderStatus.PAID, result.get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusInvalidShouldThrow() {
+        assertThrows(IllegalArgumentException.class, () -> orderService.findAdminOrdersByStatus("INVALID"));
+    }
 }

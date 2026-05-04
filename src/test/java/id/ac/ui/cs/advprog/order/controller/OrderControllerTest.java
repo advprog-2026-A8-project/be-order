@@ -244,6 +244,16 @@ class OrderControllerTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatus() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminOrdersByStatus("PAID")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/admin/by-status").param("status", "PAID"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("PAID"));
+    }
+
+    @Test
     void testGetTitiperHistoryOrders() throws Exception {
         when(orderService.findTitiperOrderHistory("user-def")).thenReturn(Arrays.asList(order));
 
