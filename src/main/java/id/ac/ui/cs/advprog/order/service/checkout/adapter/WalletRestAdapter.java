@@ -16,6 +16,9 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class WalletRestAdapter implements WalletGateway {
+    private static final String DESCRIPTION_PAYMENT = "Order payment";
+    private static final String DESCRIPTION_REFUND = "Order refund";
+    private static final String INTERNAL_AUTHORIZATION = "internal-order-service";
 
     private final RestTemplate restTemplate;
 
@@ -28,18 +31,12 @@ public class WalletRestAdapter implements WalletGateway {
                 .pathSegment("pay")
                 .toUriString();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "internal-order-service");
-
-        Map<String, Object> payload = Map.of(
-                "userId", userId,
-                "amount", amount,
-                "description", "Order payment"
-        );
-
         try {
-            restTemplate.postForEntity(debitUrl, new HttpEntity<>(payload, headers), Void.class);
+            restTemplate.postForEntity(
+                    debitUrl,
+                    buildWalletRequest(userId, amount, DESCRIPTION_PAYMENT, true),
+                    Void.class
+            );
         } catch (HttpClientErrorException e) {
             throw new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e);
         }
@@ -51,19 +48,35 @@ public class WalletRestAdapter implements WalletGateway {
                 .pathSegment("refund")
                 .toUriString();
 
+        try {
+            restTemplate.postForEntity(
+                    refundUrl,
+                    buildWalletRequest(userId, amount, DESCRIPTION_REFUND, false),
+                    Void.class
+            );
+        } catch (HttpClientErrorException e) {
+            throw new IllegalStateException("Gagal melakukan refund ke wallet.", e);
+        }
+    }
+
+    private HttpEntity<Map<String, Object>> buildWalletRequest(
+            String userId,
+            double amount,
+            String description,
+            boolean withAuthorization
+    ) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        if (withAuthorization) {
+            headers.set("Authorization", INTERNAL_AUTHORIZATION);
+        }
 
         Map<String, Object> payload = Map.of(
                 "userId", userId,
                 "amount", amount,
-                "description", "Order refund"
+                "description", description
         );
 
-        try {
-            restTemplate.postForEntity(refundUrl, new HttpEntity<>(payload, headers), Void.class);
-        } catch (HttpClientErrorException e) {
-            throw new IllegalStateException("Gagal melakukan refund ke wallet.", e);
-        }
+        return new HttpEntity<>(payload, headers);
     }
 }
