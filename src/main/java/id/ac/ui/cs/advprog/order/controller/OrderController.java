@@ -82,7 +82,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasRole('JASTIPER')")
+    @PreAuthorize("hasRole('JASTIPER') and @orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
         Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
         return toOrderResponse(cancelledOrder);

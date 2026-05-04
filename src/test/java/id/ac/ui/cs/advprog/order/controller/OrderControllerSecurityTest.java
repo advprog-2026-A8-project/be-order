@@ -140,6 +140,14 @@ class OrderControllerSecurityTest {
     }
 
     @Test
+    void cancelEndpointShouldRejectDifferentJastiperIdentity() throws Exception {
+        mockMvc.perform(post("/api/orders/order-1/cancel")
+                        .param("jastiperId", "jastiper-2")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void ratingEndpointShouldRejectJastiperRole() throws Exception {
         mockMvc.perform(post("/api/orders/order-1/rating")
                         .contentType("application/json")
