@@ -430,4 +430,16 @@ class OrderServiceImplTest {
         assertThrows(IllegalArgumentException.class, () -> orderService.findAdminActiveOrdersPaged(0, 0));
     }
 
+    @Test
+    void testGetAdminActiveOrdersPagedWithSorting() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminActiveOrdersPaged(0, 10, "totalAmount", "desc");
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
 }
