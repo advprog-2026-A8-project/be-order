@@ -37,6 +37,54 @@ class OrderControllerSecurityTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void checkoutEndpointShouldRejectJastiperRole() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "productId", "prod-1",
+                                "userId", "user-1",
+                                "jastiperId", "jastiper-1",
+                                "jumlah", 1,
+                                "alamatPengiriman", "Jakarta"
+                        )))
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void checkoutEndpointShouldRejectDifferentTitiperIdentity() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "productId", "prod-1",
+                                "userId", "user-2",
+                                "jastiperId", "jastiper-1",
+                                "jumlah", 1,
+                                "alamatPengiriman", "Jakarta"
+                        )))
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void checkoutEndpointShouldAllowOwnerTitiper() throws Exception {
+        when(orderService.createOrder(org.mockito.ArgumentMatchers.any(Order.class), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new Order());
+
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "productId", "prod-1",
+                                "userId", "user-1",
+                                "jastiperId", "jastiper-1",
+                                "jumlah", 1,
+                                "alamatPengiriman", "Jakarta"
+                        )))
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void adminEndpointShouldRejectNonAdminRole() throws Exception {
         mockMvc.perform(get("/api/orders/admin/active")
                         .with(user("titiper-1").roles("TITIPER")))
