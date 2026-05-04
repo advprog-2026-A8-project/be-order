@@ -73,11 +73,17 @@ public class OrderCheckoutFacade {
         try {
             InventoryResponse product = inventoryGateway.getProduct(order.getProductId());
             if (product == null || product.getProductQuantity() < order.getJumlah()) {
+                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
                 throw new IllegalArgumentException("Stok barang tidak mencukupi!");
             }
 
             double totalPrice = product.getPrice() * order.getJumlah();
-            walletGateway.debit(order.getUserId(), totalPrice);
+            try {
+                walletGateway.debit(order.getUserId(), totalPrice);
+            } catch (RuntimeException ex) {
+                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_WALLET_DEBIT_FAILED);
+                throw ex;
+            }
             checkoutAuditLogger.logDebitSucceeded(order.getUserId(), totalPrice);
 
             try {
