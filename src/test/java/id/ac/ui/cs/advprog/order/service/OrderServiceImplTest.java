@@ -388,7 +388,8 @@ class OrderServiceImplTest {
     void testGetAdminOrdersByStatusPagedSuccess() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));
-        when(orderRepository.findByStatusIn(any(), eq(PageRequest.of(0, 5)))).thenReturn(page);
+        when(orderRepository.findByStatusIn(any(), eq(PageRequest.of(0, 5, org.springframework.data.domain.Sort.by("id").ascending()))))
+                .thenReturn(page);
 
         Page<Order> result = orderService.findAdminOrdersByStatusPaged("PAID", 0, 5);
 

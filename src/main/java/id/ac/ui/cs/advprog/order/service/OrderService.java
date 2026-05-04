@@ -23,6 +23,7 @@ public interface OrderService {
     Page<Order> findAdminActiveOrdersPaged(int page, int size, String sortBy, String direction);
     List<Order> findAdminOrdersByStatus(String status);
     Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size);
+    Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size, String sortBy, String direction);
     AdminOrderSummaryResponse getAdminOrderSummary();
     Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating);
 }
