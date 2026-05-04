@@ -8,6 +8,7 @@ import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -113,6 +114,32 @@ public class OrderController {
     @GetMapping("/admin/active")
     public ResponseEntity<List<Order>> getAdminActiveOrders() {
         return ResponseEntity.ok(orderService.findAdminActiveOrders());
+    }
+
+    @GetMapping("/admin/active/paged")
+    public ResponseEntity<Page<Order>> getAdminActiveOrdersPaged(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction
+    ) {
+        return ResponseEntity.ok(orderService.findAdminActiveOrdersPaged(page, size, sortBy, direction));
+    }
+
+    @GetMapping("/admin/by-status")
+    public ResponseEntity<List<Order>> getAdminOrdersByStatus(@RequestParam String status) {
+        return ResponseEntity.ok(orderService.findAdminOrdersByStatus(status));
+    }
+
+    @GetMapping("/admin/by-status/paged")
+    public ResponseEntity<Page<Order>> getAdminOrdersByStatusPaged(
+            @RequestParam String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction
+    ) {
+        return ResponseEntity.ok(orderService.findAdminOrdersByStatusPaged(status, page, size, sortBy, direction));
     }
 
     @GetMapping("/admin/summary")

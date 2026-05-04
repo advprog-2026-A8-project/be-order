@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.Arrays;
 import java.util.List;
@@ -353,4 +356,122 @@ class OrderServiceImplTest {
         assertEquals(0L, summary.getCancelledOrders());
         assertEquals(0, summary.getStatusCounts().size());
     }
+
+    @Test
+    void testGetAdminOrdersByStatusSuccess() {
+        order.setStatus(OrderStatus.PAID);
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+
+        List<Order> result = orderService.findAdminOrdersByStatus("PAID");
+
+        assertEquals(1, result.size());
+        assertEquals(OrderStatus.PAID, result.get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusShouldNormalizeInput() {
+        order.setStatus(OrderStatus.PAID);
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+
+        List<Order> result = orderService.findAdminOrdersByStatus(" paid ");
+
+        assertEquals(1, result.size());
+        assertEquals(OrderStatus.PAID, result.get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusInvalidShouldThrow() {
+        assertThrows(IllegalArgumentException.class, () -> orderService.findAdminOrdersByStatus("INVALID"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedSuccess() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), eq(PageRequest.of(0, 5, org.springframework.data.domain.Sort.by("id").ascending()))))
+                .thenReturn(page);
+
+        Page<Order> result = orderService.findAdminOrdersByStatusPaged("PAID", 0, 5);
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedShouldThrowWhenPageNegative() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", -1, 5));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedShouldThrowWhenSizeNotPositive() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", 0, 0));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSorting() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "totalAmount", "desc");
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidSortBy() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "createdAt", "asc"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidDirection() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "id", "down"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPaged() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), eq(PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("id").ascending()))))
+                .thenReturn(page);
+
+        Page<Order> result = orderService.findAdminActiveOrdersPaged(0, 10);
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldThrowWhenPageNegative() {
+        assertThrows(IllegalArgumentException.class, () -> orderService.findAdminActiveOrdersPaged(-1, 10));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldThrowWhenSizeNotPositive() {
+        assertThrows(IllegalArgumentException.class, () -> orderService.findAdminActiveOrdersPaged(0, 0));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedWithSorting() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminActiveOrdersPaged(0, 10, "totalAmount", "desc");
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedWithSortingShouldRejectInvalidSortBy() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminActiveOrdersPaged(0, 10, "createdAt", "asc"));
+    }
+
 }

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -241,6 +242,170 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.cancelledOrders").value(0))
                 .andExpect(jsonPath("$.statusCounts.PAID").value(2))
                 .andExpect(jsonPath("$.statusCounts.COMPLETED").value(1));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatus() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminOrdersByStatus("PAID")).thenReturn(Arrays.asList(order));
+
+        mockMvc.perform(get("/api/orders/admin/by-status").param("status", "PAID"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("PAID"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPaged() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "id", "asc"))
+                .thenReturn(new PageImpl<>(Arrays.asList(order)));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("order-123"))
+                .andExpect(jsonPath("$.content[0].status").value("PAID"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSorting() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "totalAmount", "desc"))
+                .thenReturn(new PageImpl<>(Arrays.asList(order)));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5")
+                        .param("sortBy", "totalAmount")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidSortBy() throws Exception {
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "createdAt", "asc"))
+                .thenThrow(new IllegalArgumentException("SortBy tidak valid"));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5")
+                        .param("sortBy", "createdAt")
+                        .param("direction", "asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidDirection() throws Exception {
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "id", "down"))
+                .thenThrow(new IllegalArgumentException("Direction harus asc atau desc"));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "5")
+                        .param("sortBy", "id")
+                        .param("direction", "down"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedShouldRejectNegativePage() throws Exception {
+        when(orderService.findAdminOrdersByStatusPaged("PAID", -1, 5, "id", "asc"))
+                .thenThrow(new IllegalArgumentException("Page tidak boleh negatif"));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "-1")
+                        .param("size", "5"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedShouldRejectNonPositiveSize() throws Exception {
+        when(orderService.findAdminOrdersByStatusPaged("PAID", 0, 0, "id", "asc"))
+                .thenThrow(new IllegalArgumentException("Size harus lebih dari 0"));
+
+        mockMvc.perform(get("/api/orders/admin/by-status/paged")
+                        .param("status", "PAID")
+                        .param("page", "0")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPaged() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminActiveOrdersPaged(0, 10, "id", "asc"))
+                .thenReturn(new PageImpl<>(Arrays.asList(order)));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("order-123"))
+                .andExpect(jsonPath("$.content[0].status").value("PAID"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedWithSorting() throws Exception {
+        order.setStatus(OrderStatus.PAID);
+        when(orderService.findAdminActiveOrdersPaged(0, 10, "totalAmount", "desc"))
+                .thenReturn(new PageImpl<>(Arrays.asList(order)));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "10")
+                        .param("sortBy", "totalAmount")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("order-123"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedWithSortingShouldRejectInvalidSortBy() throws Exception {
+        when(orderService.findAdminActiveOrdersPaged(0, 10, "createdAt", "asc"))
+                .thenThrow(new IllegalArgumentException("SortBy tidak valid"));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "10")
+                        .param("sortBy", "createdAt")
+                        .param("direction", "asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldRejectNegativePage() throws Exception {
+        when(orderService.findAdminActiveOrdersPaged(-1, 10, "id", "asc"))
+                .thenThrow(new IllegalArgumentException("Page tidak boleh negatif"));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "-1")
+                        .param("size", "10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedShouldRejectNonPositiveSize() throws Exception {
+        when(orderService.findAdminActiveOrdersPaged(0, 0, "id", "asc"))
+                .thenThrow(new IllegalArgumentException("Size harus lebih dari 0"));
+
+        mockMvc.perform(get("/api/orders/admin/active/paged")
+                        .param("page", "0")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"));
     }
 
     @Test

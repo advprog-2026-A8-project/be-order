@@ -10,10 +10,14 @@ import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -22,6 +26,7 @@ import java.util.stream.Collectors;
 public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
     private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper tidak valid untuk update statistik.";
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
 
     private final OrderRepository orderRepository;
@@ -132,6 +137,46 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public Page<Order> findAdminActiveOrdersPaged(int page, int size) {
+        return findAdminActiveOrdersPaged(page, size, "id", "asc");
+    }
+
+    @Override
+    public Page<Order> findAdminActiveOrdersPaged(int page, int size, String sortBy, String direction) {
+        validatePagination(page, size);
+        Sort sort = buildSort(sortBy, direction);
+        return orderRepository.findByStatusIn(ACTIVE_STATUSES, PageRequest.of(page, size, sort));
+    }
+
+    @Override
+    public List<Order> findAdminOrdersByStatus(String status) {
+        try {
+            OrderStatus parsedStatus = parseOrderStatus(status);
+            return orderRepository.findByStatusIn(List.of(parsedStatus));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid status: " + status);
+        }
+    }
+
+    @Override
+    public Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size) {
+        return findAdminOrdersByStatusPaged(status, page, size, "id", "asc");
+    }
+
+    @Override
+    public Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size, String sortBy, String direction) {
+        validatePagination(page, size);
+        OrderStatus parsedStatus;
+        try {
+            parsedStatus = parseOrderStatus(status);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid status: " + status);
+        }
+        Sort sort = buildSort(sortBy, direction);
+        return orderRepository.findByStatusIn(List.of(parsedStatus), PageRequest.of(page, size, sort));
+    }
+
+    @Override
     public AdminOrderSummaryResponse getAdminOrderSummary() {
         List<Order> orders = orderRepository.findAll();
         Map<String, Long> statusCounts = groupStatusCounts(orders);
@@ -160,6 +205,34 @@ public class OrderServiceImpl implements OrderService {
 
     private long countOrders(List<Order> orders, Predicate<Order> predicate) {
         return orders.stream().filter(predicate).count();
+    }
+
+    private OrderStatus parseOrderStatus(String status) {
+        return OrderStatus.valueOf(status.trim().toUpperCase());
+    }
+
+    private void validatePagination(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page tidak boleh negatif");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Size harus lebih dari 0");
+        }
+    }
+
+    private Sort buildSort(String sortBy, String direction) {
+        String normalizedSortBy = (sortBy == null || sortBy.isBlank()) ? "id" : sortBy.trim();
+        String normalizedDirection = (direction == null || direction.isBlank()) ? "asc" : direction.trim().toLowerCase();
+
+        if (!ALLOWED_SORT_FIELDS.contains(normalizedSortBy)) {
+            throw new IllegalArgumentException("SortBy tidak valid");
+        }
+        if (!normalizedDirection.equals("asc") && !normalizedDirection.equals("desc")) {
+            throw new IllegalArgumentException("Direction harus asc atau desc");
+        }
+
+        Sort.Direction sortDirection = normalizedDirection.equals("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
+        return Sort.by(sortDirection, normalizedSortBy);
     }
 
     @Override

@@ -2,6 +2,8 @@ package id.ac.ui.cs.advprog.order.service;
 
 import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.model.Order;
+import org.springframework.data.domain.Page;
+
 import java.util.List;
 
 public interface OrderService {
@@ -17,6 +19,11 @@ public interface OrderService {
     List<Order> findJastiperProcessingOrders(String jastiperId);
     List<Order> findJastiperCompletedOrders(String jastiperId);
     List<Order> findAdminActiveOrders();
+    Page<Order> findAdminActiveOrdersPaged(int page, int size);
+    Page<Order> findAdminActiveOrdersPaged(int page, int size, String sortBy, String direction);
+    List<Order> findAdminOrdersByStatus(String status);
+    Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size);
+    Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size, String sortBy, String direction);
     AdminOrderSummaryResponse getAdminOrderSummary();
     Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating);
 }
