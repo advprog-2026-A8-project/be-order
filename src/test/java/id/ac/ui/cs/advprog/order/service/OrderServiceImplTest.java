@@ -409,6 +409,18 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPagedWithSorting() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminOrdersByStatusPaged("PAID", 0, 5, "totalAmount", "desc");
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(OrderStatus.PAID, result.getContent().get(0).getStatus());
+    }
+
+    @Test
     void testGetAdminActiveOrdersPaged() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));
