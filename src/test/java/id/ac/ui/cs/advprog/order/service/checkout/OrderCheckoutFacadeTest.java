@@ -85,6 +85,28 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldRejectWhenProductIdOrUserIdBlank() {
+        order.setProductId(" ");
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        order.setProductId("p1");
+        order.setUserId(" ");
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+    }
+
+    @Test
+    void checkoutShouldRejectWhenJumlahInvalid() {
+        order.setJumlah(0);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        order.setJumlah(-1);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        order.setJumlah(null);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+    }
+
+    @Test
     void checkoutShouldRejectWhenInventoryProductMissingOrInsufficient() {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(null);
