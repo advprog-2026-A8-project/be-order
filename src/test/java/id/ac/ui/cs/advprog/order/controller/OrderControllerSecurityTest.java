@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -48,7 +49,9 @@ class OrderControllerSecurityTest {
                                 "alamatPengiriman", "Jakarta"
                         )))
                         .with(user("jastiper-1").roles("JASTIPER")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
     }
 
     @Test
@@ -88,7 +91,25 @@ class OrderControllerSecurityTest {
     void adminEndpointShouldRejectNonAdminRole() throws Exception {
         mockMvc.perform(get("/api/orders/admin/active")
                         .with(user("titiper-1").roles("TITIPER")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.path").value("/api/orders/admin/active"));
+    }
+
+    @Test
+    void checkoutEndpointShouldReturnStructuredUnauthorizedWhenNoToken() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "productId", "prod-1",
+                                "userId", "user-1",
+                                "jastiperId", "jastiper-1",
+                                "jumlah", 1,
+                                "alamatPengiriman", "Jakarta"
+                        ))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
     }
 
     @Test
