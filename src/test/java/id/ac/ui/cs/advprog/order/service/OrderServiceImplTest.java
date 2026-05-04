@@ -293,4 +293,16 @@ class OrderServiceImplTest {
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.submitOrderRating("order-1", "user-1", 0, 6));
     }
+
+    @Test
+    void testSubmitRatingShouldFailWhenJastiperIdNonNumeric() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("jastiper-x");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+    }
 }
