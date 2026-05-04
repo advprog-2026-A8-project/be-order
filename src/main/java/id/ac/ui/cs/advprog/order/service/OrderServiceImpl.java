@@ -10,6 +10,8 @@ import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -129,6 +131,11 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<Order> findAdminActiveOrders() {
         return orderRepository.findByStatusIn(ACTIVE_STATUSES);
+    }
+
+    @Override
+    public Page<Order> findAdminActiveOrdersPaged(int page, int size) {
+        return orderRepository.findAll(PageRequest.of(page, size));
     }
 
     @Override

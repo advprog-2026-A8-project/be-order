@@ -8,6 +8,7 @@ import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -113,6 +114,14 @@ public class OrderController {
     @GetMapping("/admin/active")
     public ResponseEntity<List<Order>> getAdminActiveOrders() {
         return ResponseEntity.ok(orderService.findAdminActiveOrders());
+    }
+
+    @GetMapping("/admin/active/paged")
+    public ResponseEntity<Page<Order>> getAdminActiveOrdersPaged(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(orderService.findAdminActiveOrdersPaged(page, size));
     }
 
     @GetMapping("/admin/by-status")
