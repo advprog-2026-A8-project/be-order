@@ -65,8 +65,21 @@ public class SecurityConfig {
         }
 
         return allRoles.stream()
-                .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
+                .map(this::normalizeRoleName)
+                .filter(role -> !role.equals("ROLE_"))
+                .distinct()
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
+    }
+
+    private String normalizeRoleName(String role) {
+        if (role == null) {
+            return "";
+        }
+        String trimmed = role.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        return trimmed.startsWith("ROLE_") ? trimmed : "ROLE_" + trimmed;
     }
 }
