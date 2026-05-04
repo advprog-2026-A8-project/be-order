@@ -341,4 +341,17 @@ class OrderServiceImplTest {
         assertEquals(1L, summary.getStatusCounts().get("COMPLETED"));
         assertEquals(1L, summary.getStatusCounts().get("CANCELLED"));
     }
+
+    @Test
+    void testGetAdminOrderSummaryWhenNoOrders() {
+        when(orderRepository.findAll()).thenReturn(List.of());
+
+        AdminOrderSummaryResponse summary = orderService.getAdminOrderSummary();
+
+        assertEquals(0L, summary.getTotalOrders());
+        assertEquals(0L, summary.getActiveOrders());
+        assertEquals(0L, summary.getCompletedOrders());
+        assertEquals(0L, summary.getCancelledOrders());
+        assertEquals(0, summary.getStatusCounts().size());
+    }
 }

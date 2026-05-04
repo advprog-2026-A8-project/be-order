@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Service
@@ -133,16 +134,12 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public AdminOrderSummaryResponse getAdminOrderSummary() {
         List<Order> orders = orderRepository.findAll();
-        Map<String, Long> statusCounts = orders.stream()
-                .collect(Collectors.groupingBy(
-                        order -> order.getStatus().name(),
-                        Collectors.counting()
-                ));
+        Map<String, Long> statusCounts = groupStatusCounts(orders);
 
         long totalOrders = orders.size();
-        long activeOrders = orders.stream().filter(order -> ACTIVE_STATUSES.contains(order.getStatus())).count();
-        long completedOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.COMPLETED).count();
-        long cancelledOrders = orders.stream().filter(order -> order.getStatus() == OrderStatus.CANCELLED).count();
+        long activeOrders = countOrders(orders, order -> ACTIVE_STATUSES.contains(order.getStatus()));
+        long completedOrders = countOrders(orders, order -> order.getStatus() == OrderStatus.COMPLETED);
+        long cancelledOrders = countOrders(orders, order -> order.getStatus() == OrderStatus.CANCELLED);
 
         return new AdminOrderSummaryResponse(
                 totalOrders,
@@ -151,6 +148,18 @@ public class OrderServiceImpl implements OrderService {
                 cancelledOrders,
                 statusCounts
         );
+    }
+
+    private Map<String, Long> groupStatusCounts(List<Order> orders) {
+        return orders.stream()
+                .collect(Collectors.groupingBy(
+                        order -> order.getStatus().name(),
+                        Collectors.counting()
+                ));
+    }
+
+    private long countOrders(List<Order> orders, Predicate<Order> predicate) {
+        return orders.stream().filter(predicate).count();
     }
 
     @Override
