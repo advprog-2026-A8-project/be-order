@@ -21,6 +21,9 @@ configurations {
     compileOnly {
         extendsFrom(configurations.annotationProcessor.get())
     }
+    all {
+        resolutionStrategy.activateDependencyLocking()
+    }
 }
 
 repositories {
