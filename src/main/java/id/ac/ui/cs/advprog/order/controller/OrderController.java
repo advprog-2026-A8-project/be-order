@@ -155,7 +155,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/rating")
-    @PreAuthorize("hasRole('TITIPER')")
+    @PreAuthorize("hasRole('TITIPER') and authentication.name == #ratingRequest.userId")
     public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
         Order ratedOrder = orderService.submitOrderRating(
                 id,
