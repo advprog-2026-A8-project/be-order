@@ -129,6 +129,15 @@ public class OrderController {
         return ResponseEntity.ok(orderService.findAdminOrdersByStatus(status));
     }
 
+    @GetMapping("/admin/by-status/paged")
+    public ResponseEntity<Page<Order>> getAdminOrdersByStatusPaged(
+            @RequestParam String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(orderService.findAdminOrdersByStatusPaged(status, page, size));
+    }
+
     @GetMapping("/admin/summary")
     public ResponseEntity<AdminOrderSummaryResponse> getAdminOrderSummary() {
         return ResponseEntity.ok(orderService.getAdminOrderSummary());

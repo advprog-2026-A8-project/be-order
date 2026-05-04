@@ -21,6 +21,7 @@ public interface OrderService {
     List<Order> findAdminActiveOrders();
     Page<Order> findAdminActiveOrdersPaged(int page, int size);
     List<Order> findAdminOrdersByStatus(String status);
+    Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size);
     AdminOrderSummaryResponse getAdminOrderSummary();
     Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating);
 }
