@@ -21,6 +21,9 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
+    private static final String VALIDATION_REASON_MISSING_PRODUCT_OR_USER = "missing_product_or_user";
+    private static final String VALIDATION_REASON_INVALID_QUANTITY = "invalid_quantity";
+    private static final String VALIDATION_REASON_ORDER_NULL = "order_null";
     private static final String REFUND_REASON_INVENTORY_REDUCE_FAILED = "inventory_reduce_failed";
 
     private final InventoryGateway inventoryGateway;
@@ -53,6 +56,7 @@ public class OrderCheckoutFacade {
                 Order existingOrder = orderRepository.findById(existingRecord.getOrderId())
                         .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
                 if (!hasSameCheckoutPayload(existingOrder, order)) {
+                    checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, existingOrder.getId());
                     throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
                 }
                 checkoutAuditLogger.logIdempotencyHit(idempotencyKey, existingOrder.getId());
@@ -99,14 +103,17 @@ public class OrderCheckoutFacade {
 
     private void validateOrderRequest(Order order) {
         if (order == null) {
+            checkoutAuditLogger.logValidationFailed(VALIDATION_REASON_ORDER_NULL);
             throw new IllegalArgumentException(MESSAGE_ORDER_NULL);
         }
 
         if (isBlank(order.getProductId()) || isBlank(order.getUserId())) {
+            checkoutAuditLogger.logValidationFailed(VALIDATION_REASON_MISSING_PRODUCT_OR_USER);
             throw new IllegalArgumentException(MESSAGE_PRODUCT_USER_REQUIRED);
         }
 
         if (order.getJumlah() == null || order.getJumlah() <= 0) {
+            checkoutAuditLogger.logValidationFailed(VALIDATION_REASON_INVALID_QUANTITY);
             throw new IllegalArgumentException(MESSAGE_INVALID_QUANTITY);
         }
     }

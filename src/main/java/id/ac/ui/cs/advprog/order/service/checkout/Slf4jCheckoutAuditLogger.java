@@ -24,6 +24,15 @@ public class Slf4jCheckoutAuditLogger implements CheckoutAuditLogger {
     }
 
     @Override
+    public void logIdempotencyMismatch(String idempotencyKey, String existingOrderId) {
+        log.warn(
+                "checkout_idempotency_mismatch idempotencyKey={} existingOrderId={}",
+                idempotencyKey,
+                existingOrderId
+        );
+    }
+
+    @Override
     public void logDebitSucceeded(String userId, double amount) {
         log.info("checkout_debit_succeeded userId={} amount={}", userId, amount);
     }
@@ -36,5 +45,10 @@ public class Slf4jCheckoutAuditLogger implements CheckoutAuditLogger {
     @Override
     public void logRefundTriggered(String userId, double amount, String reason) {
         log.warn("checkout_refund_triggered userId={} amount={} reason={}", userId, amount, reason);
+    }
+
+    @Override
+    public void logValidationFailed(String reason) {
+        log.warn("checkout_validation_failed reason={}", reason);
     }
 }
