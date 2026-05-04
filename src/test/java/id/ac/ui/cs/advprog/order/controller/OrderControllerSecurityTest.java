@@ -62,4 +62,11 @@ class OrderControllerSecurityTest {
                         .with(user("titiper-1").roles("TITIPER")))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void titiperHistoryEndpointShouldRejectDifferentTitiperIdentity() throws Exception {
+        mockMvc.perform(get("/api/orders/titiper/user-2/history")
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
 }
