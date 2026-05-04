@@ -16,6 +16,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
+    private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
+    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper tidak valid untuk update statistik.";
+
 
     private final OrderRepository orderRepository;
     private final OrderStateMachine orderStateMachine;
@@ -140,6 +143,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
         }
         validateRatingRange(jastiperRating, productRating);
+        validateNumericJastiperId(order.getJastiperId());
 
         profileGateway.submitRating(
                 order.getId(),
@@ -158,7 +162,18 @@ public class OrderServiceImpl implements OrderService {
 
     private void validateRatingRange(int jastiperRating, int productRating) {
         if (jastiperRating < 1 || jastiperRating > 5 || productRating < 1 || productRating > 5) {
-            throw new IllegalArgumentException("Rating harus berada pada rentang 1-5");
+            throw new IllegalArgumentException(MESSAGE_INVALID_RATING_RANGE);
+        }
+    }
+
+    private void validateNumericJastiperId(String jastiperId) {
+        if (jastiperId == null || jastiperId.isBlank()) {
+            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID);
+        }
+        try {
+            Long.parseLong(jastiperId);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID, ex);
         }
     }
 }

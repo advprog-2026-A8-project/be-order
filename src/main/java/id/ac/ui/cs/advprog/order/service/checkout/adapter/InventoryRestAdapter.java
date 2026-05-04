@@ -10,9 +10,13 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Map;
+
 @Component
 @RequiredArgsConstructor
 public class InventoryRestAdapter implements InventoryGateway {
+    private static final String DEFAULT_DESCRIPTION = "";
+    private static final String DEFAULT_JASTIPER_ID = "";
 
     private final RestTemplate restTemplate;
 
@@ -43,15 +47,20 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void reduceStock(String productId, int quantity) {
-        String reduceStockUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment(productId, "reduce-stock")
-                .queryParam("quantity", quantity)
+        InventoryResponse currentProduct = getProduct(productId);
+        int updatedStock = resolveStock(currentProduct) - quantity;
+        if (updatedStock < 0) {
+            throw new IllegalStateException("Stok inventory tidak mencukupi.");
+        }
+
+        String updateProductUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
+                .pathSegment("update", productId)
                 .toUriString();
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                restTemplate.put(reduceStockUrl, null);
+                restTemplate.put(updateProductUrl, buildUpdatePayload(currentProduct, updatedStock));
                 return;
             } catch (HttpClientErrorException e) {
                 throw new IllegalStateException("Gagal mengurangi stok inventory.", e);
@@ -62,4 +71,23 @@ public class InventoryRestAdapter implements InventoryGateway {
         throw new IllegalStateException("Gagal mengakses Inventory service saat reduce stock.", lastTransientError);
     }
 
+    private int resolveStock(InventoryResponse product) {
+        Integer stock = product.getProductQuantity();
+        return stock == null ? 0 : stock;
+    }
+
+    private double resolvePrice(InventoryResponse product) {
+        Double price = product.getPrice();
+        return price == null ? 0.0 : price;
+    }
+
+    private Map<String, Object> buildUpdatePayload(InventoryResponse product, int updatedStock) {
+        return Map.of(
+                "name", product.getProductName(),
+                "description", DEFAULT_DESCRIPTION,
+                "price", resolvePrice(product),
+                "stock", updatedStock,
+                "jastiperId", DEFAULT_JASTIPER_ID
+        );
+    }
 }

@@ -16,6 +16,10 @@ import java.util.List;
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
 public class OrderController {
+    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+    private static final String MESSAGE_IDEMPOTENCY_KEY_BLANK = "Idempotency-Key tidak boleh kosong";
+    private static final String MESSAGE_IDEMPOTENCY_KEY_TOO_LONG =
+            "Idempotency-Key melebihi panjang maksimum 128 karakter";
 
     private final OrderService orderService;
 
@@ -24,6 +28,8 @@ public class OrderController {
             @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
         order.setUserId(orderRequest.getUserId());
@@ -32,8 +38,23 @@ public class OrderController {
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
         order.setStatus(OrderStatus.PENDING);
 
-        Order savedOrder = orderService.createOrder(order, idempotencyKey);
+        Order savedOrder = orderService.createOrder(order, normalizedIdempotencyKey);
         return ResponseEntity.ok(savedOrder);
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+
+        String trimmed = idempotencyKey.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException(MESSAGE_IDEMPOTENCY_KEY_BLANK);
+        }
+        if (trimmed.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw new IllegalArgumentException(MESSAGE_IDEMPOTENCY_KEY_TOO_LONG);
+        }
+        return trimmed;
     }
 
     @GetMapping
@@ -53,28 +74,14 @@ public class OrderController {
 
     @PatchMapping("/{id}/status")
     public ResponseEntity<Order> updateOrderStatus(@PathVariable String id, @RequestParam String status) {
-        try {
-            Order updatedOrder = orderService.updateOrderStatus(id, status);
-            if (updatedOrder == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(updatedOrder);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        Order updatedOrder = orderService.updateOrderStatus(id, status);
+        return toOrderResponse(updatedOrder);
     }
 
     @PostMapping("/{id}/cancel")
     public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
-        try {
-            Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
-            if (cancelledOrder == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(cancelledOrder);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
+        return toOrderResponse(cancelledOrder);
     }
 
     @GetMapping("/titiper/{userId}/active")
@@ -109,19 +116,19 @@ public class OrderController {
 
     @PostMapping("/{id}/rating")
     public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
-        try {
-            Order ratedOrder = orderService.submitOrderRating(
-                    id,
-                    ratingRequest.getUserId(),
-                    ratingRequest.getJastiperRating(),
-                    ratingRequest.getProductRating()
-            );
-            if (ratedOrder == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(ratedOrder);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
+        Order ratedOrder = orderService.submitOrderRating(
+                id,
+                ratingRequest.getUserId(),
+                ratingRequest.getJastiperRating(),
+                ratingRequest.getProductRating()
+        );
+        return toOrderResponse(ratedOrder);
+    }
+
+    private ResponseEntity<Order> toOrderResponse(Order order) {
+        if (order == null) {
+            return ResponseEntity.notFound().build();
         }
+        return ResponseEntity.ok(order);
     }
 }

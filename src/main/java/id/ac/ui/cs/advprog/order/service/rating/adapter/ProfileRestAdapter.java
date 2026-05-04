@@ -14,6 +14,7 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class ProfileRestAdapter implements ProfileGateway {
+    private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
 
     private final RestTemplate restTemplate;
 
@@ -30,24 +31,17 @@ public class ProfileRestAdapter implements ProfileGateway {
                              String productId,
                              int jastiperRating,
                              int productRating) {
-        String ratingUrl = UriComponentsBuilder.fromUriString(profileUrl)
-                .pathSegment("ratings")
+        String statsUrl = UriComponentsBuilder.fromUriString(profileUrl)
+                .pathSegment("admin", "jastiper", "stats")
                 .toUriString();
-
-        Map<String, Object> payload = Map.of(
-                "orderId", orderId,
-                "titiperId", titiperId,
-                "jastiperId", jastiperId,
-                "productId", productId,
-                "jastiperRating", jastiperRating,
-                "productRating", productRating
-        );
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                restTemplate.postForEntity(ratingUrl, payload, Void.class);
+                restTemplate.put(statsUrl, buildStatsPayload(jastiperId));
                 return;
+            } catch (NumberFormatException ex) {
+                throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
             } catch (HttpClientErrorException ex) {
                 throw new IllegalStateException("Gagal mengirim rating ke Profile module", ex);
             } catch (ResourceAccessException ex) {
@@ -55,5 +49,12 @@ public class ProfileRestAdapter implements ProfileGateway {
             }
         }
         throw new IllegalStateException("Gagal mengakses Profile module untuk submit rating", lastTransientError);
+    }
+
+    private Map<String, Object> buildStatsPayload(String jastiperId) {
+        return Map.of(
+                "userId", Long.parseLong(jastiperId),
+                "delta", SUCCESSFUL_TRANSACTION_DELTA
+        );
     }
 }

@@ -234,7 +234,7 @@ class OrderServiceImplTest {
     void testSubmitRatingSuccess() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
-        order.setJastiperId("j1");
+        order.setJastiperId("10");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
 
@@ -292,5 +292,29 @@ class OrderServiceImplTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.submitOrderRating("order-1", "user-1", 0, 6));
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenJastiperIdNonNumeric() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("jastiper-x");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenJastiperIdBlank() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId(" ");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
     }
 }

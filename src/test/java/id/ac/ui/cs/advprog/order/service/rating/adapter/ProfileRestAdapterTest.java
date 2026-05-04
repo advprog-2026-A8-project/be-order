@@ -7,20 +7,21 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Objects;
+
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileRestAdapterTest {
@@ -39,37 +40,46 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingSuccess() {
-        adapter.submitRating("o1", "u1", "j1", "p1", 5, 4);
-        verify(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+        verify(restTemplate).put(
+                eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
+                argThat(Objects::nonNull)
+        );
     }
 
     @Test
     void submitRatingFailureShouldThrow() {
         doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
-                .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
+                .when(restTemplate).put(anyString(), any());
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "u1", "j1", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
     }
 
     @Test
     void submitRatingShouldRetryOnTransientFailure() {
-        when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
-                .thenThrow(new ResourceAccessException("timeout"))
-                .thenReturn(ResponseEntity.ok().build());
+        doThrow(new ResourceAccessException("timeout"))
+                .doNothing()
+                .when(restTemplate).put(anyString(), any());
 
-        adapter.submitRating("o1", "u1", "j1", "p1", 5, 4);
+        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
 
-        verify(restTemplate, times(2)).postForEntity(anyString(), any(), eq(Void.class));
+        verify(restTemplate, times(2)).put(anyString(), any());
     }
 
     @Test
     void submitRatingShouldThrowWhenTransientFailureExhausted() {
-        when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
-                .thenThrow(new ResourceAccessException("timeout-1"))
-                .thenThrow(new ResourceAccessException("timeout-2"));
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
+                .when(restTemplate).put(anyString(), any());
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "u1", "j1", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldThrowWhenJastiperIdInvalid() {
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "not-number", "p1", 5, 4));
     }
 }

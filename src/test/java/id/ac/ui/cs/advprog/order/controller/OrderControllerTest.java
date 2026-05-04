@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -70,6 +71,19 @@ class OrderControllerTest {
     }
 
     @Test
+    void testCheckoutShouldTrimIdempotencyKeyBeforeCallingService() throws Exception {
+        when(orderService.createOrder(any(Order.class), eq("idem-1"))).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", "  idem-1  ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isOk());
+
+        verify(orderService).createOrder(any(Order.class), eq("idem-1"));
+    }
+
+    @Test
     void testCheckoutValidationErrorShouldReturnStructuredError() throws Exception {
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -84,6 +98,33 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.message").exists())
                 .andExpect(jsonPath("$.timestamp").exists())
                 .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+    }
+
+    @Test
+    void testCheckoutShouldRejectBlankIdempotencyKey() throws Exception {
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", "   ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+
+        verify(orderService, never()).createOrder(any(Order.class), anyString());
+    }
+
+    @Test
+    void testCheckoutShouldRejectTooLongIdempotencyKey() throws Exception {
+        String tooLongKey = "k".repeat(129);
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", tooLongKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+
+        verify(orderService, never()).createOrder(any(Order.class), anyString());
     }
 
     @Test
@@ -128,7 +169,9 @@ class OrderControllerTest {
     void testUpdateStatusInvalid() throws Exception {
         when(orderService.updateOrderStatus(anyString(), anyString())).thenThrow(new IllegalArgumentException());
         mockMvc.perform(patch("/api/orders/order-123/status").param("status", "SALAH"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/status"));
     }
 
     @Test
@@ -155,7 +198,9 @@ class OrderControllerTest {
                 .thenThrow(new IllegalArgumentException("forbidden"));
 
         mockMvc.perform(post("/api/orders/order-123/cancel").param("jastiperId", "jastiper-1"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/cancel"));
     }
 
     @Test
@@ -247,17 +292,19 @@ class OrderControllerTest {
 
     @Test
     void testSubmitRatingBadRequest() throws Exception {
-        when(orderService.submitOrderRating("order-123", "user-def", 6, 4))
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4))
                 .thenThrow(new IllegalArgumentException("invalid"));
 
         mockMvc.perform(post("/api/orders/order-123/rating")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(Map.of(
                                 "userId", "user-def",
-                                "jastiperRating", 6,
+                                "jastiperRating", 5,
                                 "productRating", 4
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/orders/order-123/rating"));
     }
 
     @Test

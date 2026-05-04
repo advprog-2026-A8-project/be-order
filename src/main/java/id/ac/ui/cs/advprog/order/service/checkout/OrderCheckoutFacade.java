@@ -9,25 +9,33 @@ import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 @RequiredArgsConstructor
 public class OrderCheckoutFacade {
+    private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
+    private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
+    private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
+    private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
+    private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
+            "Idempotency key sudah digunakan untuk payload order yang berbeda";
+
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
     private final OrderRepository orderRepository;
     private final OrderIdempotencyRepository orderIdempotencyRepository;
     private final CheckoutLockManager checkoutLockManager;
+    private final CheckoutAuditLogger checkoutAuditLogger;
 
     public Order checkout(Order order) {
         return checkout(order, null);
     }
 
     public Order checkout(Order order, String idempotencyKey) {
-        if (order.getProductId() == null || order.getUserId() == null) {
-            throw new IllegalArgumentException("Product ID dan User ID tidak boleh kosong");
-        }
+        validateOrderRequest(order);
+        checkoutAuditLogger.logCheckoutStarted(order, idempotencyKey);
 
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             return checkoutWithIdempotency(order, idempotencyKey.trim());
@@ -41,8 +49,14 @@ public class OrderCheckoutFacade {
         try {
             OrderIdempotency existingRecord = orderIdempotencyRepository.findById(idempotencyKey).orElse(null);
             if (existingRecord != null) {
-                return orderRepository.findById(existingRecord.getOrderId())
-                        .orElseThrow(() -> new IllegalStateException("Order untuk idempotency key tidak ditemukan"));
+                Order existingOrder = orderRepository.findById(existingRecord.getOrderId())
+                        .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
+                if (!hasSameCheckoutPayload(existingOrder, order)) {
+                    checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, existingOrder.getId());
+                    throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
+                }
+                checkoutAuditLogger.logIdempotencyHit(idempotencyKey, existingOrder.getId());
+                return existingOrder;
             }
 
             Order savedOrder = performCheckout(order);
@@ -59,16 +73,29 @@ public class OrderCheckoutFacade {
         try {
             InventoryResponse product = inventoryGateway.getProduct(order.getProductId());
             if (product == null || product.getProductQuantity() < order.getJumlah()) {
+                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
                 throw new IllegalArgumentException("Stok barang tidak mencukupi!");
             }
 
             double totalPrice = product.getPrice() * order.getJumlah();
-            walletGateway.debit(order.getUserId(), totalPrice);
+            try {
+                walletGateway.debit(order.getUserId(), totalPrice);
+            } catch (RuntimeException ex) {
+                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_WALLET_DEBIT_FAILED);
+                throw ex;
+            }
+            checkoutAuditLogger.logDebitSucceeded(order.getUserId(), totalPrice);
 
             try {
                 inventoryGateway.reduceStock(order.getProductId(), order.getJumlah());
+                checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
                 walletGateway.refund(order.getUserId(), totalPrice);
+                checkoutAuditLogger.logRefundTriggered(
+                        order.getUserId(),
+                        totalPrice,
+                        CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
+                );
                 throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.", ex);
             }
 
@@ -78,5 +105,34 @@ public class OrderCheckoutFacade {
         } finally {
             lock.unlock();
         }
+    }
+
+    private void validateOrderRequest(Order order) {
+        if (order == null) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_ORDER_NULL);
+            throw new IllegalArgumentException(MESSAGE_ORDER_NULL);
+        }
+
+        if (isBlank(order.getProductId()) || isBlank(order.getUserId())) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_MISSING_PRODUCT_OR_USER);
+            throw new IllegalArgumentException(MESSAGE_PRODUCT_USER_REQUIRED);
+        }
+
+        if (order.getJumlah() == null || order.getJumlah() <= 0) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
+            throw new IllegalArgumentException(MESSAGE_INVALID_QUANTITY);
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean hasSameCheckoutPayload(Order existingOrder, Order incomingOrder) {
+        return Objects.equals(existingOrder.getProductId(), incomingOrder.getProductId())
+                && Objects.equals(existingOrder.getUserId(), incomingOrder.getUserId())
+                && Objects.equals(existingOrder.getJastiperId(), incomingOrder.getJastiperId())
+                && Objects.equals(existingOrder.getJumlah(), incomingOrder.getJumlah())
+                && Objects.equals(existingOrder.getAlamatPengiriman(), incomingOrder.getAlamatPengiriman());
     }
 }

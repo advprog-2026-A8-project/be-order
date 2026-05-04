@@ -17,6 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -41,6 +42,9 @@ class OrderCheckoutFacadeTest {
 
     @Mock
     private CheckoutLockManager checkoutLockManager;
+
+    @Mock
+    private CheckoutAuditLogger checkoutAuditLogger;
 
     @InjectMocks
     private OrderCheckoutFacade checkoutFacade;
@@ -72,16 +76,53 @@ class OrderCheckoutFacadeTest {
         assertEquals(OrderStatus.PAID, result.getStatus());
         verify(walletGateway).debit("u1", 10000.0);
         verify(inventoryGateway).reduceStock("p1", 2);
+        verify(checkoutAuditLogger).logCheckoutStarted(order, null);
+        verify(checkoutAuditLogger).logDebitSucceeded("u1", 10000.0);
+        verify(checkoutAuditLogger).logStockReductionSucceeded("p1", 2);
     }
 
     @Test
     void checkoutShouldRejectWhenProductIdOrUserIdMissing() {
         order.setProductId(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_MISSING_PRODUCT_OR_USER);
 
         order.setProductId("p1");
         order.setUserId(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(2))
+                .logValidationFailed(CheckoutAuditReason.VALIDATION_MISSING_PRODUCT_OR_USER);
+    }
+
+    @Test
+    void checkoutShouldRejectWhenProductIdOrUserIdBlank() {
+        order.setProductId(" ");
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        order.setProductId("p1");
+        order.setUserId(" ");
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+    }
+
+    @Test
+    void checkoutShouldRejectWhenOrderNull() {
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(null));
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_ORDER_NULL);
+    }
+
+    @Test
+    void checkoutShouldRejectWhenJumlahInvalid() {
+        order.setJumlah(0);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
+
+        order.setJumlah(-1);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(2)).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
+
+        order.setJumlah(null);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(3)).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
     }
 
     @Test
@@ -89,10 +130,12 @@ class OrderCheckoutFacadeTest {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
 
         product.setProductQuantity(1);
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(checkoutAuditLogger, times(2)).logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
     }
 
     @Test
@@ -103,6 +146,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_WALLET_DEBIT_FAILED);
     }
 
     @Test
@@ -113,6 +157,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(walletGateway).refund("u1", 10000.0);
+        verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
     }
 
     @Test
@@ -137,6 +182,11 @@ class OrderCheckoutFacadeTest {
     void checkoutWithExistingIdempotencyKeyShouldReturnExistingOrderWithoutChargingAgain() {
         Order existingOrder = new Order();
         existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId(null);
+        existingOrder.setAlamatPengiriman(null);
 
         when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-1"))
@@ -149,6 +199,7 @@ class OrderCheckoutFacadeTest {
         verify(walletGateway, never()).debit(any(), any(Double.class));
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
         verify(orderRepository, times(0)).save(any(Order.class));
+        verify(checkoutAuditLogger).logIdempotencyHit("idem-1", "order-100");
     }
 
     @Test
@@ -159,5 +210,38 @@ class OrderCheckoutFacadeTest {
         when(orderRepository.findById("order-404")).thenReturn(java.util.Optional.empty());
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-1"));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyAndDifferentPayloadShouldThrow() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId("j1");
+        existingOrder.setAlamatPengiriman("alamat lama");
+
+        Order newPayload = new Order();
+        newPayload.setProductId("p1");
+        newPayload.setUserId("u1");
+        newPayload.setJumlah(3);
+        newPayload.setJastiperId("j1");
+        newPayload.setAlamatPengiriman("alamat lama");
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-1"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> checkoutFacade.checkout(newPayload, "idem-1")
+        );
+
+        assertTrue(ex.getMessage().contains("Idempotency key"));
+        verify(checkoutAuditLogger).logIdempotencyMismatch("idem-1", "order-100");
+        verify(walletGateway, never()).debit(any(), any(Double.class));
+        verify(orderRepository, never()).save(any(Order.class));
     }
 }
