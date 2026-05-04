@@ -86,4 +86,20 @@ class OrderControllerSecurityTest {
                         .with(user("user-1").roles("TITIPER")))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void jastiperTodoEndpointShouldRejectDifferentJastiperIdentity() throws Exception {
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-2/todo")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void jastiperTodoEndpointShouldAllowOwnerJastiper() throws Exception {
+        when(orderService.findJastiperTodoOrders("jastiper-1")).thenReturn(List.of(new Order()));
+
+        mockMvc.perform(get("/api/orders/jastiper/jastiper-1/todo")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isOk());
+    }
 }
