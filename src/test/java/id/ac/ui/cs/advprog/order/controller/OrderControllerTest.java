@@ -71,6 +71,19 @@ class OrderControllerTest {
     }
 
     @Test
+    void testCheckoutShouldTrimIdempotencyKeyBeforeCallingService() throws Exception {
+        when(orderService.createOrder(any(Order.class), eq("idem-1"))).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Idempotency-Key", "  idem-1  ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isOk());
+
+        verify(orderService).createOrder(any(Order.class), eq("idem-1"));
+    }
+
+    @Test
     void testCheckoutValidationErrorShouldReturnStructuredError() throws Exception {
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)

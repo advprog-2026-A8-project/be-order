@@ -17,6 +17,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OrderController {
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+    private static final String MESSAGE_IDEMPOTENCY_KEY_BLANK = "Idempotency-Key tidak boleh kosong";
+    private static final String MESSAGE_IDEMPOTENCY_KEY_TOO_LONG =
+            "Idempotency-Key melebihi panjang maksimum 128 karakter";
 
     private final OrderService orderService;
 
@@ -46,10 +49,10 @@ public class OrderController {
 
         String trimmed = idempotencyKey.trim();
         if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException("Idempotency-Key tidak boleh kosong");
+            throw new IllegalArgumentException(MESSAGE_IDEMPOTENCY_KEY_BLANK);
         }
         if (trimmed.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
-            throw new IllegalArgumentException("Idempotency-Key melebihi panjang maksimum 128 karakter");
+            throw new IllegalArgumentException(MESSAGE_IDEMPOTENCY_KEY_TOO_LONG);
         }
         return trimmed;
     }
