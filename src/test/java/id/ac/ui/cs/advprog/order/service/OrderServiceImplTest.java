@@ -397,6 +397,18 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPagedShouldThrowWhenPageNegative() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", -1, 5));
+    }
+
+    @Test
+    void testGetAdminOrdersByStatusPagedShouldThrowWhenSizeNotPositive() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("PAID", 0, 0));
+    }
+
+    @Test
     void testGetAdminActiveOrdersPaged() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));

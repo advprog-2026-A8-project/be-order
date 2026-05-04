@@ -151,9 +151,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size) {
+        validatePagination(page, size);
         try {
             OrderStatus parsedStatus = parseOrderStatus(status);
-            validatePagination(page, size);
             return orderRepository.findByStatusIn(List.of(parsedStatus), PageRequest.of(page, size));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid status: " + status);
