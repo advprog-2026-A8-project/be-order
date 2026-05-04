@@ -16,6 +16,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -49,10 +50,21 @@ public class SecurityConfig {
 
     private Collection<GrantedAuthority> extractAuthoritiesFromRolesClaim(Jwt jwt) {
         List<String> roles = jwt.getClaimAsStringList("roles");
-        if (roles == null) {
+        String singleRole = jwt.getClaimAsString("role");
+
+        if (roles == null && singleRole == null) {
             return Collections.emptyList();
         }
-        return roles.stream()
+
+        List<String> allRoles = new ArrayList<>();
+        if (roles != null) {
+            allRoles.addAll(roles);
+        }
+        if (singleRole != null && !singleRole.isBlank()) {
+            allRoles.add(singleRole);
+        }
+
+        return allRoles.stream()
                 .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
