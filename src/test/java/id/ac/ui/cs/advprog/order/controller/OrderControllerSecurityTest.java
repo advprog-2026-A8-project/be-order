@@ -59,7 +59,7 @@ class OrderControllerSecurityTest {
         when(orderService.findTitiperOrderHistory("user-1")).thenReturn(List.of(new Order()));
 
         mockMvc.perform(get("/api/orders/titiper/user-1/history")
-                        .with(user("titiper-1").roles("TITIPER")))
+                        .with(user("user-1").roles("TITIPER")))
                 .andExpect(status().isOk());
     }
 

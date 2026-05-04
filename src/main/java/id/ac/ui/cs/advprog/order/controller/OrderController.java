@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -92,6 +93,7 @@ public class OrderController {
     }
 
     @GetMapping("/titiper/{userId}/history")
+    @PreAuthorize("authentication.name == #userId")
     public ResponseEntity<List<Order>> getTitiperOrderHistory(@PathVariable String userId) {
         return ResponseEntity.ok(orderService.findTitiperOrderHistory(userId));
     }
