@@ -113,6 +113,14 @@ class ProfileRestAdapterTest {
     }
 
     @Test
+    void submitRatingShouldThrowWhenJastiperIdNotPositive() {
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "0", "p1", 5, 4));
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "-10", "p1", 5, 4));
+    }
+
+    @Test
     void submitRatingShouldFailFastWhenInternalAuthorizationBlank() {
         ReflectionTestUtils.setField(adapter, "internalAuthorization", "   ");
 
