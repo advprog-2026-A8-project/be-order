@@ -3,6 +3,9 @@ package id.ac.ui.cs.advprog.order.service.rating.adapter;
 import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -24,6 +27,9 @@ public class ProfileRestAdapter implements ProfileGateway {
     @Value("${order.http.retry.max-attempts:2}")
     private int maxAttempts;
 
+    @Value("${order.profile.internal-authorization:internal-order-service}")
+    private String internalAuthorization;
+
     @Override
     public void submitRating(String orderId,
                              String titiperId,
@@ -38,7 +44,7 @@ public class ProfileRestAdapter implements ProfileGateway {
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                restTemplate.put(statsUrl, buildStatsPayload(jastiperId));
+                restTemplate.put(statsUrl, buildStatsRequest(jastiperId));
                 return;
             } catch (NumberFormatException ex) {
                 throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
@@ -56,5 +62,12 @@ public class ProfileRestAdapter implements ProfileGateway {
                 "userId", Long.parseLong(jastiperId),
                 "delta", SUCCESSFUL_TRANSACTION_DELTA
         );
+    }
+
+    private HttpEntity<Map<String, Object>> buildStatsRequest(String jastiperId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", internalAuthorization);
+        return new HttpEntity<>(buildStatsPayload(jastiperId), headers);
     }
 }
