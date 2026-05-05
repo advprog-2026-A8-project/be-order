@@ -41,6 +41,7 @@ class WalletRestAdapterTest {
     void setUp() {
         ReflectionTestUtils.setField(adapter, "walletUrl", "http://localhost:8082/wallet");
         ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "Bearer test-wallet-token");
     }
 
     @Test
@@ -142,6 +143,38 @@ class WalletRestAdapterTest {
     }
 
     @Test
+    void debitShouldSendBearerAuthorizationHeader() {
+        when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
+                .thenReturn(ResponseEntity.ok().build());
+
+        adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0);
+
+        verify(restTemplate).postForEntity(
+                eq("http://localhost:8082/wallet/pay"),
+                argThat(request -> hasAuthorizationHeader(request, "Bearer test-wallet-token")),
+                eq(Void.class)
+        );
+    }
+
+    @Test
+    void debitShouldFailFastWhenInternalAuthorizationBlank() {
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "   ");
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0));
+        verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
+    void debitShouldFailFastWhenInternalAuthorizationNotBearer() {
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "internal-order-service");
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0));
+        verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
     void refundShouldSendUuidTypedUserIdInPayload() {
         when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
                 .thenReturn(ResponseEntity.ok().build());
@@ -163,5 +196,12 @@ class WalletRestAdapterTest {
             return false;
         }
         return expected.equals(body.get("userId"));
+    }
+
+    private boolean hasAuthorizationHeader(Object request, String expected) {
+        if (!(request instanceof HttpEntity<?> entity)) {
+            return false;
+        }
+        return expected.equals(entity.getHeaders().getFirst("Authorization"));
     }
 }
