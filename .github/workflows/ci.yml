@@ -50,21 +50,21 @@ jobs:
       - name: Set environment variables
         run: |
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "APP_PORT=8080" >> $GITHUB_ENV
+            echo "APP_PORT=5000" >> $GITHUB_ENV
             echo "CONTAINER_NAME=order_server_prod" >> $GITHUB_ENV
             echo "IMAGE_TAG=latest" >> $GITHUB_ENV
             echo "DB_CONTAINER_NAME=order_db_prod" >> $GITHUB_ENV
             echo "DB_NAME=orderdb_prod" >> $GITHUB_ENV
-            echo "DB_PORT=5432" >> $GITHUB_ENV
+            echo "DB_PORT=5001" >> $GITHUB_ENV
             echo "DB_VOLUME=order_data_prod" >> $GITHUB_ENV
           else
-            # STAGING CONFIG (Port 8081)
-            echo "APP_PORT=8081" >> $GITHUB_ENV
+            # STAGING CONFIG
+            echo "APP_PORT=5002" >> $GITHUB_ENV
             echo "CONTAINER_NAME=order_server_staging" >> $GITHUB_ENV
             echo "IMAGE_TAG=staging" >> $GITHUB_ENV
             echo "DB_CONTAINER_NAME=order_db_staging" >> $GITHUB_ENV
             echo "DB_NAME=orderdb_staging" >> $GITHUB_ENV
-            echo "DB_PORT=5433" >> $GITHUB_ENV
+            echo "DB_PORT=5003" >> $GITHUB_ENV
             echo "DB_VOLUME=order_data_staging" >> $GITHUB_ENV
           fi
 
