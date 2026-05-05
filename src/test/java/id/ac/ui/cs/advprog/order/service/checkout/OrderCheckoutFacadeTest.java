@@ -174,6 +174,11 @@ class OrderCheckoutFacadeTest {
         verify(checkoutAuditLogger).logRefundTriggered(
                 "u1",
                 10000.0,
+                CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
+        );
+        verify(checkoutAuditLogger).logRefundTriggered(
+                "u1",
+                10000.0,
                 CheckoutAuditReason.REFUND_COMPENSATION_FAILED
         );
     }
