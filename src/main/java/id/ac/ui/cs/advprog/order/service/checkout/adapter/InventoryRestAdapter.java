@@ -15,8 +15,8 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class InventoryRestAdapter implements InventoryGateway {
-    private static final String DEFAULT_DESCRIPTION = "";
-    private static final String DEFAULT_JASTIPER_ID = "";
+    private static final String UPDATE_PATH = "update";
+    private static final String DEFAULT_STRING = "";
 
     private final RestTemplate restTemplate;
 
@@ -28,9 +28,12 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public InventoryResponse getProduct(String productId) {
-        String productUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment(productId)
-                .toUriString();
+        validateRetryConfiguration();
+        return getProductWithRetry(productId);
+    }
+
+    private InventoryResponse getProductWithRetry(String productId) {
+        String productUrl = buildProductUrl(productId);
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -47,15 +50,14 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void reduceStock(String productId, int quantity) {
-        InventoryResponse currentProduct = getProduct(productId);
+        validateRetryConfiguration();
+        InventoryResponse currentProduct = getProductWithRetry(productId);
         int updatedStock = resolveStock(currentProduct) - quantity;
         if (updatedStock < 0) {
             throw new IllegalStateException("Stok inventory tidak mencukupi.");
         }
 
-        String updateProductUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment("update", productId)
-                .toUriString();
+        String updateProductUrl = buildUpdateProductUrl(productId);
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -84,10 +86,42 @@ public class InventoryRestAdapter implements InventoryGateway {
     private Map<String, Object> buildUpdatePayload(InventoryResponse product, int updatedStock) {
         return Map.of(
                 "name", product.getProductName(),
-                "description", DEFAULT_DESCRIPTION,
+                "description", resolveDescription(product),
                 "price", resolvePrice(product),
                 "stock", updatedStock,
-                "jastiperId", DEFAULT_JASTIPER_ID
+                "jastiperId", resolveJastiperId(product)
         );
+    }
+
+    private String resolveDescription(InventoryResponse product) {
+        String description = product.getDescription();
+        return resolveNullableString(description);
+    }
+
+    private String resolveJastiperId(InventoryResponse product) {
+        String jastiperId = product.getJastiperId();
+        return resolveNullableString(jastiperId);
+    }
+
+    private String resolveNullableString(String value) {
+        return value == null ? DEFAULT_STRING : value;
+    }
+
+    private String buildProductUrl(String productId) {
+        return UriComponentsBuilder.fromUriString(inventoryUrl)
+                .pathSegment(productId)
+                .toUriString();
+    }
+
+    private String buildUpdateProductUrl(String productId) {
+        return UriComponentsBuilder.fromUriString(inventoryUrl)
+                .pathSegment(UPDATE_PATH, productId)
+                .toUriString();
+    }
+
+    private void validateRetryConfiguration() {
+        if (maxAttempts <= 0) {
+            throw new IllegalStateException("Konfigurasi order.http.retry.max-attempts harus lebih dari 0.");
+        }
     }
 }

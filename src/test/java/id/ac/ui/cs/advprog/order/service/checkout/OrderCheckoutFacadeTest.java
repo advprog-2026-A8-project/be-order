@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -139,6 +140,23 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldRejectWhenInventoryPriceMissingOrInvalid() {
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+
+        product.setPrice(null);
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        product.setPrice(0.0);
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        product.setPrice(-100.0);
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+    }
+
+    @Test
     void checkoutShouldPropagateWalletFailureAndNotReduceStock() {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
@@ -158,6 +176,29 @@ class OrderCheckoutFacadeTest {
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(walletGateway).refund("u1", 10000.0);
         verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
+    }
+
+    @Test
+    void checkoutShouldWrapWhenRefundAlsoFailsAfterStockReductionFailure() {
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reduceStock("p1", 2);
+        doThrow(new IllegalStateException("refund down")).when(walletGateway).refund("u1", 10000.0);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+
+        assertTrue(ex.getMessage().contains("Dana direfund"));
+        verify(walletGateway).refund("u1", 10000.0);
+        verify(checkoutAuditLogger).logRefundTriggered(
+                "u1",
+                10000.0,
+                CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
+        );
+        verify(checkoutAuditLogger).logRefundTriggered(
+                "u1",
+                10000.0,
+                CheckoutAuditReason.REFUND_COMPENSATION_FAILED
+        );
     }
 
     @Test
@@ -243,5 +284,85 @@ class OrderCheckoutFacadeTest {
         verify(checkoutAuditLogger).logIdempotencyMismatch("idem-1", "order-100");
         verify(walletGateway, never()).debit(any(), any(Double.class));
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void checkoutWithIdempotencyShouldRecoverWhenDuplicateKeyRaceHappens() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId(null);
+        existingOrder.setAlamatPengiriman(null);
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-race")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-race"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race", "order-100")));
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-100");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        Order result = checkoutFacade.checkout(order, "idem-race");
+
+        assertEquals("order-100", result.getId());
+    }
+
+    @Test
+    void checkoutWithIdempotencyShouldThrowDomainErrorWhenRaceWinnerRecordMissing() {
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-missing")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-missing"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.empty());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-101");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-missing"));
+    }
+
+    @Test
+    void checkoutWithIdempotencyShouldRejectRaceWinnerOrderWithDifferentPayload() {
+        Order raceWinnerOrder = new Order();
+        raceWinnerOrder.setId("order-202");
+        raceWinnerOrder.setProductId("p1");
+        raceWinnerOrder.setUserId("u1");
+        raceWinnerOrder.setJumlah(99);
+        raceWinnerOrder.setJastiperId(null);
+        raceWinnerOrder.setAlamatPengiriman(null);
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-race-mismatch")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-race-mismatch"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race-mismatch", "order-202")));
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-201");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+        when(orderRepository.findById("order-202")).thenReturn(java.util.Optional.of(raceWinnerOrder));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-race-mismatch"));
     }
 }

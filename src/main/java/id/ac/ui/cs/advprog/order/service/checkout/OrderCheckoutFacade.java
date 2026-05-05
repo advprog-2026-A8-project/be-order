@@ -8,6 +8,7 @@ import id.ac.ui.cs.advprog.order.repository.OrderIdempotencyRepository;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
@@ -18,9 +19,14 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
     private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
     private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
+    private static final String MESSAGE_INVALID_PRICE = "Harga produk tidak valid";
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
+    private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE =
+            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.";
+    private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED =
+            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.";
 
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
@@ -60,8 +66,12 @@ public class OrderCheckoutFacade {
             }
 
             Order savedOrder = performCheckout(order);
-            orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
-            return savedOrder;
+            try {
+                orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
+                return savedOrder;
+            } catch (DataIntegrityViolationException ex) {
+                return resolveRaceWinnerOrder(idempotencyKey, order, ex);
+            }
         } finally {
             idempotencyLock.unlock();
         }
@@ -76,6 +86,7 @@ public class OrderCheckoutFacade {
                 checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
                 throw new IllegalArgumentException("Stok barang tidak mencukupi!");
             }
+            validateProductPrice(product);
 
             double totalPrice = product.getPrice() * order.getJumlah();
             try {
@@ -90,13 +101,7 @@ public class OrderCheckoutFacade {
                 inventoryGateway.reduceStock(order.getProductId(), order.getJumlah());
                 checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
-                walletGateway.refund(order.getUserId(), totalPrice);
-                checkoutAuditLogger.logRefundTriggered(
-                        order.getUserId(),
-                        totalPrice,
-                        CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
-                );
-                throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.", ex);
+                throw handleInventoryReduceFailure(order, totalPrice, ex);
             }
 
             order.setStatus(OrderStatus.PAID);
@@ -134,5 +139,57 @@ public class OrderCheckoutFacade {
                 && Objects.equals(existingOrder.getJastiperId(), incomingOrder.getJastiperId())
                 && Objects.equals(existingOrder.getJumlah(), incomingOrder.getJumlah())
                 && Objects.equals(existingOrder.getAlamatPengiriman(), incomingOrder.getAlamatPengiriman());
+    }
+
+    private void validateProductPrice(InventoryResponse product) {
+        if (product.getPrice() == null || product.getPrice() <= 0) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_PRICE);
+            throw new IllegalArgumentException(MESSAGE_INVALID_PRICE);
+        }
+    }
+
+    private IllegalStateException handleInventoryReduceFailure(Order order, double totalPrice, RuntimeException inventoryException) {
+        logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
+
+        try {
+            walletGateway.refund(order.getUserId(), totalPrice);
+            return new IllegalStateException(
+                    MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE,
+                    inventoryException
+            );
+        } catch (RuntimeException refundEx) {
+            logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
+            IllegalStateException wrapped = new IllegalStateException(
+                    MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED,
+                    inventoryException
+            );
+            wrapped.addSuppressed(refundEx);
+            return wrapped;
+        }
+    }
+
+    private void logRefundReason(Order order, double totalPrice, String reason) {
+        checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, reason);
+    }
+
+    private Order resolveRaceWinnerOrder(String idempotencyKey, Order incomingOrder, DataIntegrityViolationException ex) {
+        OrderIdempotency raceWinnerRecord = orderIdempotencyRepository.findById(idempotencyKey)
+                .orElseThrow(() -> buildIdempotencyRaceResolutionException(ex));
+        Order raceWinnerOrder = orderRepository.findById(raceWinnerRecord.getOrderId())
+                .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
+        ensureSamePayloadForRaceWinner(idempotencyKey, incomingOrder, raceWinnerOrder);
+        checkoutAuditLogger.logIdempotencyHit(idempotencyKey, raceWinnerOrder.getId());
+        return raceWinnerOrder;
+    }
+
+    private IllegalStateException buildIdempotencyRaceResolutionException(Throwable cause) {
+        return new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND, cause);
+    }
+
+    private void ensureSamePayloadForRaceWinner(String idempotencyKey, Order incomingOrder, Order raceWinnerOrder) {
+        if (!hasSameCheckoutPayload(raceWinnerOrder, incomingOrder)) {
+            checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, raceWinnerOrder.getId());
+            throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
+        }
     }
 }

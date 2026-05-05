@@ -14,10 +14,13 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -25,6 +28,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class InventoryRestAdapterTest {
@@ -107,6 +111,33 @@ class InventoryRestAdapterTest {
     }
 
     @Test
+    void reduceStockShouldPreserveInventoryContractFields() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setDescription("Desk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(10);
+        product.setJastiperId("j-1");
+
+        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
+                .thenReturn(product);
+
+        AtomicReference<Object> bodyRef = new AtomicReference<>();
+        doAnswer(invocation -> {
+            bodyRef.set(invocation.getArgument(1));
+            return null;
+        }).when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), any());
+
+        adapter.reduceStock("p1", 2);
+
+        @SuppressWarnings("unchecked")
+        var payload = (java.util.Map<String, Object>) bodyRef.get();
+        assertEquals("Desk A", payload.get("description"));
+        assertEquals("j-1", payload.get("jastiperId"));
+    }
+
+    @Test
     void reduceStockFailureShouldThrow() {
         InventoryResponse product = new InventoryResponse();
         product.setProductId("p1");
@@ -183,5 +214,14 @@ class InventoryRestAdapterTest {
                 .thenReturn(product);
 
         assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 1));
+    }
+
+    @Test
+    void getProductShouldFailFastWhenMaxAttemptsIsNotPositive() {
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> adapter.getProduct("p1"));
+        assertTrue(exception.getMessage().contains("max-attempts"));
+        verify(restTemplate, times(0)).getForObject(anyString(), eq(InventoryResponse.class));
     }
 }
