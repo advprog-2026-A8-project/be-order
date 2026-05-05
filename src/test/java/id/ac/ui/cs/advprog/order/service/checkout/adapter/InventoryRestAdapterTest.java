@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -213,5 +214,14 @@ class InventoryRestAdapterTest {
                 .thenReturn(product);
 
         assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 1));
+    }
+
+    @Test
+    void getProductShouldFailFastWhenMaxAttemptsIsNotPositive() {
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> adapter.getProduct("p1"));
+        assertTrue(exception.getMessage().contains("max-attempts"));
+        verify(restTemplate, times(0)).getForObject(anyString(), eq(InventoryResponse.class));
     }
 }
