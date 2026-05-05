@@ -6,6 +6,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CheckoutLockManagerTest {
 
@@ -29,5 +30,23 @@ class CheckoutLockManagerTest {
 
         assertNotNull(lock1);
         assertSame(lock1, lock2);
+    }
+
+    @Test
+    void shouldRejectNullOrBlankProductId() {
+        CheckoutLockManager manager = new CheckoutLockManager();
+
+        assertThrows(IllegalArgumentException.class, () -> manager.getLockForProduct(null));
+        assertThrows(IllegalArgumentException.class, () -> manager.getLockForProduct(""));
+        assertThrows(IllegalArgumentException.class, () -> manager.getLockForProduct("   "));
+    }
+
+    @Test
+    void shouldRejectNullOrBlankIdempotencyKey() {
+        CheckoutLockManager manager = new CheckoutLockManager();
+
+        assertThrows(IllegalArgumentException.class, () -> manager.getLockForIdempotencyKey(null));
+        assertThrows(IllegalArgumentException.class, () -> manager.getLockForIdempotencyKey(""));
+        assertThrows(IllegalArgumentException.class, () -> manager.getLockForIdempotencyKey("   "));
     }
 }
