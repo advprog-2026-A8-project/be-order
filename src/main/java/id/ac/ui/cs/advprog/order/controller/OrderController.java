@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,6 +27,7 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/checkout")
+    @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.canCheckoutForRequestUser(authentication, #orderRequest)")
     public ResponseEntity<Order> checkout(
             @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
@@ -81,32 +83,38 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('JASTIPER') and @orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<Order> cancelByJastiper(@PathVariable String id, @RequestParam String jastiperId) {
         Order cancelledOrder = orderService.cancelOrderByJastiper(id, jastiperId);
         return toOrderResponse(cancelledOrder);
     }
 
     @GetMapping("/titiper/{userId}/active")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #userId)")
     public ResponseEntity<List<Order>> getTitiperActiveOrders(@PathVariable String userId) {
         return ResponseEntity.ok(orderService.findTitiperActiveOrders(userId));
     }
 
     @GetMapping("/titiper/{userId}/history")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #userId)")
     public ResponseEntity<List<Order>> getTitiperOrderHistory(@PathVariable String userId) {
         return ResponseEntity.ok(orderService.findTitiperOrderHistory(userId));
     }
 
     @GetMapping("/jastiper/{jastiperId}/todo")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<List<Order>> getJastiperTodoOrders(@PathVariable String jastiperId) {
         return ResponseEntity.ok(orderService.findJastiperTodoOrders(jastiperId));
     }
 
     @GetMapping("/jastiper/{jastiperId}/processing")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<List<Order>> getJastiperProcessingOrders(@PathVariable String jastiperId) {
         return ResponseEntity.ok(orderService.findJastiperProcessingOrders(jastiperId));
     }
 
     @GetMapping("/jastiper/{jastiperId}/completed")
+    @PreAuthorize("@orderAccessGuard.isOwner(authentication, #jastiperId)")
     public ResponseEntity<List<Order>> getJastiperCompletedOrders(@PathVariable String jastiperId) {
         return ResponseEntity.ok(orderService.findJastiperCompletedOrders(jastiperId));
     }
@@ -148,6 +156,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/rating")
+    @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.isOwnerOfRequestedUser(authentication, #ratingRequest.userId)")
     public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
         Order ratedOrder = orderService.submitOrderRating(
                 id,
