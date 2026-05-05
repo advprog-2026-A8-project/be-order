@@ -70,10 +70,7 @@ public class OrderCheckoutFacade {
                 orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
                 return savedOrder;
             } catch (DataIntegrityViolationException ex) {
-                OrderIdempotency raceWinnerRecord = orderIdempotencyRepository.findById(idempotencyKey)
-                        .orElseThrow(() -> ex);
-                return orderRepository.findById(raceWinnerRecord.getOrderId())
-                        .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
+                return resolveRaceWinnerOrder(idempotencyKey, ex);
             }
         } finally {
             idempotencyLock.unlock();
@@ -173,5 +170,12 @@ public class OrderCheckoutFacade {
 
     private void logRefundReason(Order order, double totalPrice, String reason) {
         checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, reason);
+    }
+
+    private Order resolveRaceWinnerOrder(String idempotencyKey, DataIntegrityViolationException ex) {
+        OrderIdempotency raceWinnerRecord = orderIdempotencyRepository.findById(idempotencyKey)
+                .orElseThrow(() -> ex);
+        return orderRepository.findById(raceWinnerRecord.getOrderId())
+                .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
     }
 }
