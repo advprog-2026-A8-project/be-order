@@ -128,4 +128,13 @@ class ProfileRestAdapterTest {
                 adapter.submitRating("o1", "1", "10", "p1", 5, 4));
         verify(restTemplate, never()).put(anyString(), any());
     }
+
+    @Test
+    void submitRatingShouldFailFastWhenInternalAuthorizationNotBearer() {
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "internal-order-service");
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+        verify(restTemplate, never()).put(anyString(), any());
+    }
 }
