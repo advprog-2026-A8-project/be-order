@@ -18,6 +18,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProfileRestAdapter implements ProfileGateway {
     private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
+    private static final String AUTHORIZATION_HEADER = "Authorization";
 
     private final RestTemplate restTemplate;
 
@@ -67,7 +68,7 @@ public class ProfileRestAdapter implements ProfileGateway {
     private HttpEntity<Map<String, Object>> buildStatsRequest(String jastiperId) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", internalAuthorization);
+        headers.set(AUTHORIZATION_HEADER, internalAuthorization);
         return new HttpEntity<>(buildStatsPayload(jastiperId), headers);
     }
 }
