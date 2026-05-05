@@ -29,6 +29,10 @@ public class InventoryRestAdapter implements InventoryGateway {
     @Override
     public InventoryResponse getProduct(String productId) {
         validateRetryConfiguration();
+        return getProductWithRetry(productId);
+    }
+
+    private InventoryResponse getProductWithRetry(String productId) {
         String productUrl = buildProductUrl(productId);
 
         ResourceAccessException lastTransientError = null;
@@ -47,7 +51,7 @@ public class InventoryRestAdapter implements InventoryGateway {
     @Override
     public void reduceStock(String productId, int quantity) {
         validateRetryConfiguration();
-        InventoryResponse currentProduct = getProduct(productId);
+        InventoryResponse currentProduct = getProductWithRetry(productId);
         int updatedStock = resolveStock(currentProduct) - quantity;
         if (updatedStock < 0) {
             throw new IllegalStateException("Stok inventory tidak mencukupi.");
