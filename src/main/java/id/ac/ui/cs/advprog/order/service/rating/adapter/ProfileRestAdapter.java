@@ -19,6 +19,7 @@ import java.util.Map;
 public class ProfileRestAdapter implements ProfileGateway {
     private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
     private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String EMPTY = "";
 
     private final RestTemplate restTemplate;
 
@@ -75,8 +76,15 @@ public class ProfileRestAdapter implements ProfileGateway {
     }
 
     private void validateInternalAuthorization() {
-        if (internalAuthorization == null || internalAuthorization.isBlank()) {
+        if (normalize(internalAuthorization).isEmpty()) {
             throw new IllegalStateException("Token internal authorization untuk Profile belum dikonfigurasi.");
         }
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return EMPTY;
+        }
+        return value.trim();
     }
 }
