@@ -15,6 +15,9 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class InventoryRestAdapter implements InventoryGateway {
+    private static final String UPDATE_PATH = "update";
+    private static final String DEFAULT_STRING = "";
+
     private final RestTemplate restTemplate;
 
     @Value("${order.inventory.url}")
@@ -25,9 +28,7 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public InventoryResponse getProduct(String productId) {
-        String productUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment(productId)
-                .toUriString();
+        String productUrl = buildProductUrl(productId);
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -50,9 +51,7 @@ public class InventoryRestAdapter implements InventoryGateway {
             throw new IllegalStateException("Stok inventory tidak mencukupi.");
         }
 
-        String updateProductUrl = UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment("update", productId)
-                .toUriString();
+        String updateProductUrl = buildUpdateProductUrl(productId);
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -90,11 +89,27 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     private String resolveDescription(InventoryResponse product) {
         String description = product.getDescription();
-        return description == null ? "" : description;
+        return resolveNullableString(description);
     }
 
     private String resolveJastiperId(InventoryResponse product) {
         String jastiperId = product.getJastiperId();
-        return jastiperId == null ? "" : jastiperId;
+        return resolveNullableString(jastiperId);
+    }
+
+    private String resolveNullableString(String value) {
+        return value == null ? DEFAULT_STRING : value;
+    }
+
+    private String buildProductUrl(String productId) {
+        return UriComponentsBuilder.fromUriString(inventoryUrl)
+                .pathSegment(productId)
+                .toUriString();
+    }
+
+    private String buildUpdateProductUrl(String productId) {
+        return UriComponentsBuilder.fromUriString(inventoryUrl)
+                .pathSegment(UPDATE_PATH, productId)
+                .toUriString();
     }
 }
