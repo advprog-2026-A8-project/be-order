@@ -42,7 +42,7 @@ public class ProfileRestAdapter implements ProfileGateway {
                              String productId,
                              int jastiperRating,
                              int productRating) {
-        validateInternalAuthorization();
+        String authorizationToken = validateAndGetInternalAuthorization();
 
         String statsUrl = UriComponentsBuilder.fromUriString(profileUrl)
                 .pathSegment("admin", "jastiper", "stats")
@@ -51,7 +51,7 @@ public class ProfileRestAdapter implements ProfileGateway {
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                restTemplate.put(statsUrl, buildStatsRequest(jastiperId));
+                restTemplate.put(statsUrl, buildStatsRequest(jastiperId, authorizationToken));
                 return;
             } catch (NumberFormatException ex) {
                 throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
@@ -72,14 +72,14 @@ public class ProfileRestAdapter implements ProfileGateway {
         );
     }
 
-    private HttpEntity<Map<String, Object>> buildStatsRequest(String jastiperId) {
+    private HttpEntity<Map<String, Object>> buildStatsRequest(String jastiperId, String authorizationToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(AUTHORIZATION_HEADER, internalAuthorization);
+        headers.set(AUTHORIZATION_HEADER, authorizationToken);
         return new HttpEntity<>(buildStatsPayload(jastiperId), headers);
     }
 
-    private void validateInternalAuthorization() {
+    private String validateAndGetInternalAuthorization() {
         String normalized = normalize(internalAuthorization);
         if (normalized.isEmpty()) {
             throw new IllegalStateException("Token internal authorization untuk Profile belum dikonfigurasi.");
@@ -87,6 +87,7 @@ public class ProfileRestAdapter implements ProfileGateway {
         if (!normalized.startsWith(BEARER_PREFIX) || normalized.length() <= BEARER_PREFIX.length()) {
             throw new IllegalStateException("Token internal authorization harus berformat 'Bearer <token>'.");
         }
+        return normalized;
     }
 
     private String normalize(String value) {
