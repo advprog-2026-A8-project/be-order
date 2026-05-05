@@ -70,7 +70,7 @@ public class OrderCheckoutFacade {
                 orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
                 return savedOrder;
             } catch (DataIntegrityViolationException ex) {
-                return resolveRaceWinnerOrder(idempotencyKey, ex);
+                return resolveRaceWinnerOrder(idempotencyKey, order, ex);
             }
         } finally {
             idempotencyLock.unlock();
@@ -172,11 +172,17 @@ public class OrderCheckoutFacade {
         checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, reason);
     }
 
-    private Order resolveRaceWinnerOrder(String idempotencyKey, DataIntegrityViolationException ex) {
+    private Order resolveRaceWinnerOrder(String idempotencyKey, Order incomingOrder, DataIntegrityViolationException ex) {
         OrderIdempotency raceWinnerRecord = orderIdempotencyRepository.findById(idempotencyKey)
                 .orElseThrow(() -> buildIdempotencyRaceResolutionException(ex));
-        return orderRepository.findById(raceWinnerRecord.getOrderId())
+        Order raceWinnerOrder = orderRepository.findById(raceWinnerRecord.getOrderId())
                 .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
+        if (!hasSameCheckoutPayload(raceWinnerOrder, incomingOrder)) {
+            checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, raceWinnerOrder.getId());
+            throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
+        }
+        checkoutAuditLogger.logIdempotencyHit(idempotencyKey, raceWinnerOrder.getId());
+        return raceWinnerOrder;
     }
 
     private IllegalStateException buildIdempotencyRaceResolutionException(Throwable cause) {
