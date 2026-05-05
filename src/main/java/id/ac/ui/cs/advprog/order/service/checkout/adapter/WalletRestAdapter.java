@@ -36,7 +36,7 @@ public class WalletRestAdapter implements WalletGateway {
     @Value("${order.http.retry.max-attempts:2}")
     private int maxAttempts;
 
-    @Value("${order.wallet.internal-authorization:internal-order-service}")
+    @Value("${order.wallet.internal-authorization:Bearer internal-order-service}")
     private String internalAuthorization;
 
     @Override
