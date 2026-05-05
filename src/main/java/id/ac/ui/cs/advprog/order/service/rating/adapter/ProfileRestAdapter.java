@@ -62,8 +62,9 @@ public class ProfileRestAdapter implements ProfileGateway {
     }
 
     private Map<String, Object> buildStatsPayload(String jastiperId) {
+        long parsedJastiperId = parsePositiveJastiperId(jastiperId);
         return Map.of(
-                "userId", Long.parseLong(jastiperId),
+                "userId", parsedJastiperId,
                 "delta", SUCCESSFUL_TRANSACTION_DELTA
         );
     }
@@ -86,5 +87,13 @@ public class ProfileRestAdapter implements ProfileGateway {
             return EMPTY;
         }
         return value.trim();
+    }
+
+    private long parsePositiveJastiperId(String jastiperId) {
+        long parsed = Long.parseLong(jastiperId);
+        if (parsed <= 0) {
+            throw new IllegalArgumentException("ID jastiper harus berupa angka positif.");
+        }
+        return parsed;
     }
 }
