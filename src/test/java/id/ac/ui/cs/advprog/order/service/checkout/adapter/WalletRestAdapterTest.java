@@ -21,6 +21,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class WalletRestAdapterTest {
@@ -107,5 +108,17 @@ class WalletRestAdapterTest {
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
         assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));
+    }
+
+    @Test
+    void debitShouldThrowWhenUserIdIsNotUuid() {
+        assertThrows(IllegalArgumentException.class, () -> adapter.debit("not-uuid", 10000.0));
+        verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
+    void refundShouldThrowWhenUserIdIsNotUuid() {
+        assertThrows(IllegalArgumentException.class, () -> adapter.refund("not-uuid", 10000.0));
+        verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
     }
 }
