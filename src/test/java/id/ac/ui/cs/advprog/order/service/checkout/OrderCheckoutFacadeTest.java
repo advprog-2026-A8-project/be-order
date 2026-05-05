@@ -316,4 +316,24 @@ class OrderCheckoutFacadeTest {
 
         assertEquals("order-100", result.getId());
     }
+
+    @Test
+    void checkoutWithIdempotencyShouldThrowDomainErrorWhenRaceWinnerRecordMissing() {
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-missing")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-missing"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.empty());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-101");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-missing"));
+    }
 }
