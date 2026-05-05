@@ -17,10 +17,11 @@ class OrderIdempotencyRepositoryConstraintTest {
     @Test
     void shouldRejectDuplicateOrderIdAcrossDifferentIdempotencyKeys() {
         repository.saveAndFlush(new OrderIdempotency("idem-1", "order-100"));
+        OrderIdempotency duplicateOrderId = new OrderIdempotency("idem-2", "order-100");
 
         assertThrows(
                 DataIntegrityViolationException.class,
-                () -> repository.saveAndFlush(new OrderIdempotency("idem-2", "order-100"))
+                () -> repository.saveAndFlush(duplicateOrderId)
         );
     }
 }
