@@ -171,6 +171,11 @@ class OrderCheckoutFacadeTest {
 
         assertTrue(ex.getMessage().contains("Dana direfund"));
         verify(walletGateway).refund("u1", 10000.0);
+        verify(checkoutAuditLogger).logRefundTriggered(
+                "u1",
+                10000.0,
+                CheckoutAuditReason.REFUND_COMPENSATION_FAILED
+        );
     }
 
     @Test
