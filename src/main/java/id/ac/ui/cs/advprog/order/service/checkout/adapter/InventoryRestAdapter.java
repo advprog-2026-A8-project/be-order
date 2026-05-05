@@ -15,9 +15,6 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class InventoryRestAdapter implements InventoryGateway {
-    private static final String DEFAULT_DESCRIPTION = "";
-    private static final String DEFAULT_JASTIPER_ID = "";
-
     private final RestTemplate restTemplate;
 
     @Value("${order.inventory.url}")
@@ -84,10 +81,20 @@ public class InventoryRestAdapter implements InventoryGateway {
     private Map<String, Object> buildUpdatePayload(InventoryResponse product, int updatedStock) {
         return Map.of(
                 "name", product.getProductName(),
-                "description", DEFAULT_DESCRIPTION,
+                "description", resolveDescription(product),
                 "price", resolvePrice(product),
                 "stock", updatedStock,
-                "jastiperId", DEFAULT_JASTIPER_ID
+                "jastiperId", resolveJastiperId(product)
         );
+    }
+
+    private String resolveDescription(InventoryResponse product) {
+        String description = product.getDescription();
+        return description == null ? "" : description;
+    }
+
+    private String resolveJastiperId(InventoryResponse product) {
+        String jastiperId = product.getJastiperId();
+        return jastiperId == null ? "" : jastiperId;
     }
 }
