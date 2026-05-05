@@ -177,15 +177,19 @@ public class OrderCheckoutFacade {
                 .orElseThrow(() -> buildIdempotencyRaceResolutionException(ex));
         Order raceWinnerOrder = orderRepository.findById(raceWinnerRecord.getOrderId())
                 .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
-        if (!hasSameCheckoutPayload(raceWinnerOrder, incomingOrder)) {
-            checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, raceWinnerOrder.getId());
-            throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
-        }
+        ensureSamePayloadForRaceWinner(idempotencyKey, incomingOrder, raceWinnerOrder);
         checkoutAuditLogger.logIdempotencyHit(idempotencyKey, raceWinnerOrder.getId());
         return raceWinnerOrder;
     }
 
     private IllegalStateException buildIdempotencyRaceResolutionException(Throwable cause) {
         return new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND, cause);
+    }
+
+    private void ensureSamePayloadForRaceWinner(String idempotencyKey, Order incomingOrder, Order raceWinnerOrder) {
+        if (!hasSameCheckoutPayload(raceWinnerOrder, incomingOrder)) {
+            checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, raceWinnerOrder.getId());
+            throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
+        }
     }
 }
