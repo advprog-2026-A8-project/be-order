@@ -135,13 +135,14 @@ public class OrderCheckoutFacade {
     }
 
     private IllegalStateException handleInventoryReduceFailure(Order order, double totalPrice, RuntimeException inventoryException) {
+        checkoutAuditLogger.logRefundTriggered(
+                order.getUserId(),
+                totalPrice,
+                CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
+        );
+
         try {
             walletGateway.refund(order.getUserId(), totalPrice);
-            checkoutAuditLogger.logRefundTriggered(
-                    order.getUserId(),
-                    totalPrice,
-                    CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
-            );
             return new IllegalStateException(
                     MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE,
                     inventoryException
