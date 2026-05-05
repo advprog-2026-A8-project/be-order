@@ -14,6 +14,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
@@ -21,6 +23,8 @@ public class WalletRestAdapter implements WalletGateway {
     private static final String DESCRIPTION_PAYMENT = "Order payment";
     private static final String DESCRIPTION_REFUND = "Order refund";
     private static final String INTERNAL_AUTHORIZATION = "internal-order-service";
+    private static final String PAY_PATH = "pay";
+    private static final String REFUND_PATH = "refund";
 
     private final RestTemplate restTemplate;
 
@@ -33,53 +37,23 @@ public class WalletRestAdapter implements WalletGateway {
     @Override
     public void debit(String userId, double amount) {
         validateUserId(userId);
-
-        String debitUrl = UriComponentsBuilder.fromUriString(walletUrl)
-                .pathSegment("pay")
-                .toUriString();
-
-        ResourceAccessException lastTransientError = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                restTemplate.postForEntity(
-                        debitUrl,
-                        buildWalletRequest(userId, amount, DESCRIPTION_PAYMENT, true),
-                        Void.class
-                );
-                return;
-            } catch (HttpClientErrorException e) {
-                throw new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e);
-            } catch (ResourceAccessException e) {
-                lastTransientError = e;
-            }
-        }
-        throw new IllegalStateException("Gagal mengakses Wallet service saat debit.", lastTransientError);
+        executeWalletMutation(
+                buildWalletUrl(PAY_PATH),
+                () -> buildWalletRequest(userId, amount, DESCRIPTION_PAYMENT, true),
+                e -> new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e),
+                "Gagal mengakses Wallet service saat debit."
+        );
     }
 
     @Override
     public void refund(String userId, double amount) {
         validateUserId(userId);
-
-        String refundUrl = UriComponentsBuilder.fromUriString(walletUrl)
-                .pathSegment("refund")
-                .toUriString();
-
-        ResourceAccessException lastTransientError = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                restTemplate.postForEntity(
-                        refundUrl,
-                        buildWalletRequest(userId, amount, DESCRIPTION_REFUND, false),
-                        Void.class
-                );
-                return;
-            } catch (HttpClientErrorException e) {
-                throw new IllegalStateException("Gagal melakukan refund ke wallet.", e);
-            } catch (ResourceAccessException e) {
-                lastTransientError = e;
-            }
-        }
-        throw new IllegalStateException("Gagal mengakses Wallet service saat refund.", lastTransientError);
+        executeWalletMutation(
+                buildWalletUrl(REFUND_PATH),
+                () -> buildWalletRequest(userId, amount, DESCRIPTION_REFUND, false),
+                e -> new IllegalStateException("Gagal melakukan refund ke wallet.", e),
+                "Gagal mengakses Wallet service saat refund."
+        );
     }
 
     private HttpEntity<Map<String, Object>> buildWalletRequest(
@@ -109,5 +83,31 @@ public class WalletRestAdapter implements WalletGateway {
         } catch (RuntimeException ex) {
             throw new IllegalArgumentException("User ID wallet harus berformat UUID.", ex);
         }
+    }
+
+    private String buildWalletUrl(String pathSegment) {
+        return UriComponentsBuilder.fromUriString(walletUrl)
+                .pathSegment(pathSegment)
+                .toUriString();
+    }
+
+    private void executeWalletMutation(
+            String url,
+            Supplier<HttpEntity<Map<String, Object>>> requestSupplier,
+            Function<HttpClientErrorException, RuntimeException> httpExceptionMapper,
+            String transientFailureMessage
+    ) {
+        ResourceAccessException lastTransientError = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                restTemplate.postForEntity(url, requestSupplier.get(), Void.class);
+                return;
+            } catch (HttpClientErrorException e) {
+                throw httpExceptionMapper.apply(e);
+            } catch (ResourceAccessException e) {
+                lastTransientError = e;
+            }
+        }
+        throw new IllegalStateException(transientFailureMessage, lastTransientError);
     }
 }
