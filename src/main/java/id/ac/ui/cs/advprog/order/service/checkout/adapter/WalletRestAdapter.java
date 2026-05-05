@@ -36,10 +36,10 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void debit(String userId, double amount) {
-        validateUserId(userId);
+        UUID walletUserId = parseWalletUserId(userId);
         executeWalletMutation(
                 buildWalletUrl(PAY_PATH),
-                () -> buildWalletRequest(userId, amount, DESCRIPTION_PAYMENT, true),
+                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_PAYMENT, true),
                 e -> new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e),
                 "Gagal mengakses Wallet service saat debit."
         );
@@ -47,17 +47,17 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void refund(String userId, double amount) {
-        validateUserId(userId);
+        UUID walletUserId = parseWalletUserId(userId);
         executeWalletMutation(
                 buildWalletUrl(REFUND_PATH),
-                () -> buildWalletRequest(userId, amount, DESCRIPTION_REFUND, false),
+                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_REFUND, false),
                 e -> new IllegalStateException("Gagal melakukan refund ke wallet.", e),
                 "Gagal mengakses Wallet service saat refund."
         );
     }
 
     private HttpEntity<Map<String, Object>> buildWalletRequest(
-            String userId,
+            UUID userId,
             double amount,
             String description,
             boolean withAuthorization
@@ -69,7 +69,7 @@ public class WalletRestAdapter implements WalletGateway {
         }
 
         Map<String, Object> payload = Map.of(
-                "userId", UUID.fromString(userId),
+                "userId", userId,
                 "amount", amount,
                 "description", description
         );
@@ -77,9 +77,9 @@ public class WalletRestAdapter implements WalletGateway {
         return new HttpEntity<>(payload, headers);
     }
 
-    private void validateUserId(String userId) {
+    private UUID parseWalletUserId(String userId) {
         try {
-            UUID.fromString(userId);
+            return UUID.fromString(userId);
         } catch (RuntimeException ex) {
             throw new IllegalArgumentException("User ID wallet harus berformat UUID.", ex);
         }
