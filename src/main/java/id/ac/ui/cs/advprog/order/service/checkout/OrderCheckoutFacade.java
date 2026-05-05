@@ -90,22 +90,7 @@ public class OrderCheckoutFacade {
                 inventoryGateway.reduceStock(order.getProductId(), order.getJumlah());
                 checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
-                try {
-                    walletGateway.refund(order.getUserId(), totalPrice);
-                    checkoutAuditLogger.logRefundTriggered(
-                            order.getUserId(),
-                            totalPrice,
-                            CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
-                    );
-                } catch (RuntimeException refundEx) {
-                    IllegalStateException wrapped = new IllegalStateException(
-                            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.",
-                            ex
-                    );
-                    wrapped.addSuppressed(refundEx);
-                    throw wrapped;
-                }
-                throw new IllegalStateException("Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.", ex);
+                throw handleInventoryReduceFailure(order, totalPrice, ex);
             }
 
             order.setStatus(OrderStatus.PAID);
@@ -143,5 +128,27 @@ public class OrderCheckoutFacade {
                 && Objects.equals(existingOrder.getJastiperId(), incomingOrder.getJastiperId())
                 && Objects.equals(existingOrder.getJumlah(), incomingOrder.getJumlah())
                 && Objects.equals(existingOrder.getAlamatPengiriman(), incomingOrder.getAlamatPengiriman());
+    }
+
+    private IllegalStateException handleInventoryReduceFailure(Order order, double totalPrice, RuntimeException inventoryException) {
+        try {
+            walletGateway.refund(order.getUserId(), totalPrice);
+            checkoutAuditLogger.logRefundTriggered(
+                    order.getUserId(),
+                    totalPrice,
+                    CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
+            );
+            return new IllegalStateException(
+                    "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.",
+                    inventoryException
+            );
+        } catch (RuntimeException refundEx) {
+            IllegalStateException wrapped = new IllegalStateException(
+                    "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.",
+                    inventoryException
+            );
+            wrapped.addSuppressed(refundEx);
+            return wrapped;
+        }
     }
 }
