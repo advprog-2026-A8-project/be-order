@@ -11,26 +11,29 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class ExternalServicePropertiesTest {
+    private static final String INVENTORY_URL_KEY = "order.inventory.url";
+    private static final String WALLET_URL_KEY = "order.wallet.url";
+    private static final String PROFILE_URL_KEY = "order.profile.url";
 
     @Test
     void shouldRequireOrderExternalServiceUrls() {
         PropertySourcesPropertyResolver resolver = new PropertySourcesPropertyResolver(propertySources());
 
-        assertNotNull(resolver.getProperty("order.inventory.url"));
-        assertNotNull(resolver.getProperty("order.wallet.url"));
-        assertNotNull(resolver.getProperty("order.profile.url"));
+        assertNotNull(resolver.getProperty(INVENTORY_URL_KEY));
+        assertNotNull(resolver.getProperty(WALLET_URL_KEY));
+        assertNotNull(resolver.getProperty(PROFILE_URL_KEY));
 
-        assertFalse(resolver.getProperty("order.inventory.url").isBlank());
-        assertFalse(resolver.getProperty("order.wallet.url").isBlank());
-        assertFalse(resolver.getProperty("order.profile.url").isBlank());
+        assertFalse(resolver.getProperty(INVENTORY_URL_KEY).isBlank());
+        assertFalse(resolver.getProperty(WALLET_URL_KEY).isBlank());
+        assertFalse(resolver.getProperty(PROFILE_URL_KEY).isBlank());
     }
 
     private MutablePropertySources propertySources() {
         MutablePropertySources sources = new MutablePropertySources();
         sources.addFirst(new MapPropertySource("external", Map.of(
-                "order.inventory.url", "http://localhost:8081/api/products",
-                "order.wallet.url", "http://localhost:8082/wallet",
-                "order.profile.url", "http://localhost:8083/api/profile"
+                INVENTORY_URL_KEY, "http://localhost:8081/api/products",
+                WALLET_URL_KEY, "http://localhost:8082/wallet",
+                PROFILE_URL_KEY, "http://localhost:8083/api/profile"
         )));
         return sources;
     }
