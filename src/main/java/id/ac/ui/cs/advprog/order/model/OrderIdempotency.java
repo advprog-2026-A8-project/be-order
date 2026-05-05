@@ -14,10 +14,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderIdempotency {
+    private static final String COLUMN_IDEMPOTENCY_KEY = "idempotency_key";
+    private static final String COLUMN_ORDER_ID = "order_id";
+
     @Id
-    @Column(name = "idempotency_key", nullable = false, unique = true)
+    @Column(name = COLUMN_IDEMPOTENCY_KEY, nullable = false, unique = true)
     private String idempotencyKey;
 
-    @Column(name = "order_id", nullable = false, unique = true)
+    @Column(name = COLUMN_ORDER_ID, nullable = false, unique = true)
     private String orderId;
 }
