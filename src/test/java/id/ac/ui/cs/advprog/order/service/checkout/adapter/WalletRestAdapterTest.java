@@ -43,7 +43,7 @@ class WalletRestAdapterTest {
         when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
                 .thenReturn(ResponseEntity.ok().build());
 
-        adapter.debit("u1", 10000.0);
+        adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0);
         verify(restTemplate).postForEntity(eq("http://localhost:8082/wallet/pay"), any(), eq(Void.class));
     }
 
@@ -52,7 +52,7 @@ class WalletRestAdapterTest {
         doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
-        assertThrows(IllegalArgumentException.class, () -> adapter.debit("u1", 10000.0));
+        assertThrows(IllegalArgumentException.class, () -> adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0));
     }
 
     @Test
@@ -61,7 +61,7 @@ class WalletRestAdapterTest {
                 .doReturn(ResponseEntity.ok().build())
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
-        adapter.debit("u1", 10000.0);
+        adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0);
         verify(restTemplate, times(2)).postForEntity(anyString(), any(), eq(Void.class));
     }
 
@@ -71,7 +71,7 @@ class WalletRestAdapterTest {
                 .doThrow(new ResourceAccessException("timeout-2"))
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
-        assertThrows(IllegalStateException.class, () -> adapter.debit("u1", 10000.0));
+        assertThrows(IllegalStateException.class, () -> adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0));
     }
 
     @Test
@@ -79,7 +79,7 @@ class WalletRestAdapterTest {
         when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
                 .thenReturn(ResponseEntity.ok().build());
 
-        adapter.refund("u1", 10000.0);
+        adapter.refund("00000000-0000-0000-0000-000000000001", 10000.0);
         verify(restTemplate).postForEntity(eq("http://localhost:8082/wallet/refund"), any(), eq(Void.class));
     }
 
@@ -88,7 +88,7 @@ class WalletRestAdapterTest {
         doThrow(new HttpClientErrorException(HttpStatus.INTERNAL_SERVER_ERROR))
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
-        assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));
+        assertThrows(IllegalStateException.class, () -> adapter.refund("00000000-0000-0000-0000-000000000001", 10000.0));
     }
 
     @Test
@@ -97,7 +97,7 @@ class WalletRestAdapterTest {
                 .doReturn(ResponseEntity.ok().build())
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
-        adapter.refund("u1", 10000.0);
+        adapter.refund("00000000-0000-0000-0000-000000000001", 10000.0);
         verify(restTemplate, times(2)).postForEntity(anyString(), any(), eq(Void.class));
     }
 
@@ -107,7 +107,7 @@ class WalletRestAdapterTest {
                 .doThrow(new ResourceAccessException("timeout-2"))
                 .when(restTemplate).postForEntity(anyString(), any(), eq(Void.class));
 
-        assertThrows(IllegalStateException.class, () -> adapter.refund("u1", 10000.0));
+        assertThrows(IllegalStateException.class, () -> adapter.refund("00000000-0000-0000-0000-000000000001", 10000.0));
     }
 
     @Test

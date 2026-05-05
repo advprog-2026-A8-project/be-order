@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -31,6 +32,8 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void debit(String userId, double amount) {
+        validateUserId(userId);
+
         String debitUrl = UriComponentsBuilder.fromUriString(walletUrl)
                 .pathSegment("pay")
                 .toUriString();
@@ -55,6 +58,8 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void refund(String userId, double amount) {
+        validateUserId(userId);
+
         String refundUrl = UriComponentsBuilder.fromUriString(walletUrl)
                 .pathSegment("refund")
                 .toUriString();
@@ -96,5 +101,13 @@ public class WalletRestAdapter implements WalletGateway {
         );
 
         return new HttpEntity<>(payload, headers);
+    }
+
+    private void validateUserId(String userId) {
+        try {
+            UUID.fromString(userId);
+        } catch (RuntimeException ex) {
+            throw new IllegalArgumentException("User ID wallet harus berformat UUID.", ex);
+        }
     }
 }
