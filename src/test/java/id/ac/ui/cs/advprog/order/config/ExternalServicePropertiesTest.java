@@ -28,6 +28,8 @@ class ExternalServicePropertiesTest {
     private MutablePropertySources propertySources() {
         MutablePropertySources sources = new MutablePropertySources();
         sources.addFirst(new MapPropertySource("external", Map.of(
+                "order.inventory.url", "http://localhost:8081/api/products",
+                "order.wallet.url", "http://localhost:8082/wallet",
                 "order.profile.url", "http://localhost:8083/api/profile"
         )));
         return sources;
