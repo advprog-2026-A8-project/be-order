@@ -12,6 +12,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @JdbcTest
 class DatabaseForeignKeyMigrationTest {
+    private static final String TABLE_ORDER_IDEMPOTENCY = "ORDER_IDEMPOTENCY";
+    private static final String FOREIGN_KEY_CONSTRAINT_TYPE = "FOREIGN KEY";
+    private static final String FK_ORDER_IDEMPOTENCY_ORDER_ID = "FK_ORDER_IDEMPOTENCY_ORDER_ID";
+    private static final String FK_QUERY = """
+            SELECT CONSTRAINT_NAME
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+            WHERE TABLE_NAME = ?
+              AND CONSTRAINT_TYPE = ?
+            """;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -19,13 +28,10 @@ class DatabaseForeignKeyMigrationTest {
     @Test
     void shouldHaveForeignKeyFromOrderIdempotencyToOrders() {
         List<String> fkNames = jdbcTemplate.queryForList(
-                """
-                SELECT CONSTRAINT_NAME
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
-                WHERE TABLE_NAME = 'ORDER_IDEMPOTENCY'
-                  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
-                """,
-                String.class
+                FK_QUERY,
+                String.class,
+                TABLE_ORDER_IDEMPOTENCY,
+                FOREIGN_KEY_CONSTRAINT_TYPE
         );
 
         List<String> normalized = fkNames.stream()
@@ -33,8 +39,8 @@ class DatabaseForeignKeyMigrationTest {
                 .toList();
 
         assertTrue(
-                normalized.contains("FK_ORDER_IDEMPOTENCY_ORDER_ID"),
-                "Foreign key FK_ORDER_IDEMPOTENCY_ORDER_ID wajib ada."
+                normalized.contains(FK_ORDER_IDEMPOTENCY_ORDER_ID),
+                "Foreign key " + FK_ORDER_IDEMPOTENCY_ORDER_ID + " wajib ada."
         );
     }
 }
