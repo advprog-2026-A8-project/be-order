@@ -19,6 +19,7 @@ import java.util.Map;
 public class ProfileRestAdapter implements ProfileGateway {
     private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
     private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
     private static final String EMPTY = "";
     private static final String MESSAGE_INVALID_JASTIPER_ID_POSITIVE =
             "ID jastiper harus berupa angka positif.";
@@ -79,8 +80,12 @@ public class ProfileRestAdapter implements ProfileGateway {
     }
 
     private void validateInternalAuthorization() {
-        if (normalize(internalAuthorization).isEmpty()) {
+        String normalized = normalize(internalAuthorization);
+        if (normalized.isEmpty()) {
             throw new IllegalStateException("Token internal authorization untuk Profile belum dikonfigurasi.");
+        }
+        if (!normalized.startsWith(BEARER_PREFIX) || normalized.length() <= BEARER_PREFIX.length()) {
+            throw new IllegalStateException("Token internal authorization harus berformat 'Bearer <token>'.");
         }
     }
 

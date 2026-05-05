@@ -39,7 +39,7 @@ class ProfileRestAdapterTest {
     void setUp() {
         ReflectionTestUtils.setField(adapter, "profileUrl", "http://localhost:8083/api/profile");
         ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
-        ReflectionTestUtils.setField(adapter, "internalAuthorization", "internal-order-service");
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "Bearer test-admin-token");
     }
 
     @Test
