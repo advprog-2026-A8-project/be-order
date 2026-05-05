@@ -123,7 +123,7 @@ public class WalletRestAdapter implements WalletGateway {
             Function<HttpClientErrorException, RuntimeException> httpExceptionMapper,
             String transientFailureMessage
     ) {
-        validateRetryConfiguration();
+        validateAdapterConfiguration();
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -139,7 +139,7 @@ public class WalletRestAdapter implements WalletGateway {
         throw new IllegalStateException(transientFailureMessage, lastTransientError);
     }
 
-    private void validateRetryConfiguration() {
+    private void validateAdapterConfiguration() {
         if (maxAttempts <= 0) {
             throw new IllegalStateException("Konfigurasi order.http.retry.max-attempts harus lebih dari 0.");
         }
