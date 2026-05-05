@@ -18,6 +18,7 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
     private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
     private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
+    private static final String MESSAGE_INVALID_PRICE = "Harga produk tidak valid";
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
@@ -79,6 +80,11 @@ public class OrderCheckoutFacade {
             if (product == null || product.getProductQuantity() < order.getJumlah()) {
                 checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
                 throw new IllegalArgumentException("Stok barang tidak mencukupi!");
+            }
+
+            if (product.getPrice() == null || product.getPrice() <= 0) {
+                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_PRICE);
+                throw new IllegalArgumentException(MESSAGE_INVALID_PRICE);
             }
 
             double totalPrice = product.getPrice() * order.getJumlah();
