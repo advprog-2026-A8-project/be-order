@@ -336,4 +336,33 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-missing"));
     }
+
+    @Test
+    void checkoutWithIdempotencyShouldRejectRaceWinnerOrderWithDifferentPayload() {
+        Order raceWinnerOrder = new Order();
+        raceWinnerOrder.setId("order-202");
+        raceWinnerOrder.setProductId("p1");
+        raceWinnerOrder.setUserId("u1");
+        raceWinnerOrder.setJumlah(99);
+        raceWinnerOrder.setJastiperId(null);
+        raceWinnerOrder.setAlamatPengiriman(null);
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-race-mismatch")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-race-mismatch"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race-mismatch", "order-202")));
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-201");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+        when(orderRepository.findById("order-202")).thenReturn(java.util.Optional.of(raceWinnerOrder));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-race-mismatch"));
+    }
 }
