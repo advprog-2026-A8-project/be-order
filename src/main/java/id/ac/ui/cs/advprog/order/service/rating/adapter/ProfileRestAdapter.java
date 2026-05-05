@@ -20,6 +20,8 @@ public class ProfileRestAdapter implements ProfileGateway {
     private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String EMPTY = "";
+    private static final String MESSAGE_INVALID_JASTIPER_ID_POSITIVE =
+            "ID jastiper harus berupa angka positif.";
 
     private final RestTemplate restTemplate;
 
@@ -92,7 +94,7 @@ public class ProfileRestAdapter implements ProfileGateway {
     private long parsePositiveJastiperId(String jastiperId) {
         long parsed = Long.parseLong(jastiperId);
         if (parsed <= 0) {
-            throw new IllegalArgumentException("ID jastiper harus berupa angka positif.");
+            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID_POSITIVE);
         }
         return parsed;
     }
