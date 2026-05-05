@@ -69,7 +69,7 @@ public class WalletRestAdapter implements WalletGateway {
         }
 
         Map<String, Object> payload = Map.of(
-                "userId", userId,
+                "userId", UUID.fromString(userId),
                 "amount", amount,
                 "description", description
         );
