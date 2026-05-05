@@ -174,7 +174,7 @@ public class OrderCheckoutFacade {
 
     private Order resolveRaceWinnerOrder(String idempotencyKey, DataIntegrityViolationException ex) {
         OrderIdempotency raceWinnerRecord = orderIdempotencyRepository.findById(idempotencyKey)
-                .orElseThrow(() -> ex);
+                .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND, ex));
         return orderRepository.findById(raceWinnerRecord.getOrderId())
                 .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
     }
