@@ -49,4 +49,24 @@ class CheckoutLockManagerTest {
         assertThrows(IllegalArgumentException.class, () -> manager.getLockForIdempotencyKey(""));
         assertThrows(IllegalArgumentException.class, () -> manager.getLockForIdempotencyKey("   "));
     }
+
+    @Test
+    void shouldNormalizeProductLockKeyByTrim() {
+        CheckoutLockManager manager = new CheckoutLockManager();
+
+        ReentrantLock lock1 = manager.getLockForProduct("p1");
+        ReentrantLock lock2 = manager.getLockForProduct("  p1  ");
+
+        assertSame(lock1, lock2);
+    }
+
+    @Test
+    void shouldNormalizeIdempotencyLockKeyByTrim() {
+        CheckoutLockManager manager = new CheckoutLockManager();
+
+        ReentrantLock lock1 = manager.getLockForIdempotencyKey("idem-1");
+        ReentrantLock lock2 = manager.getLockForIdempotencyKey("  idem-1  ");
+
+        assertSame(lock1, lock2);
+    }
 }

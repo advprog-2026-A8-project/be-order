@@ -14,18 +14,23 @@ public class CheckoutLockManager {
     private final ConcurrentHashMap<String, ReentrantLock> idempotencyLocks = new ConcurrentHashMap<>();
 
     public ReentrantLock getLockForProduct(String productId) {
-        validateKey(productId, MESSAGE_PRODUCT_ID_REQUIRED);
-        return productLocks.computeIfAbsent(productId, key -> new ReentrantLock());
+        String normalizedProductId = normalizeKey(productId, MESSAGE_PRODUCT_ID_REQUIRED);
+        return productLocks.computeIfAbsent(normalizedProductId, key -> new ReentrantLock());
     }
 
     public ReentrantLock getLockForIdempotencyKey(String idempotencyKey) {
-        validateKey(idempotencyKey, MESSAGE_IDEMPOTENCY_KEY_REQUIRED);
-        return idempotencyLocks.computeIfAbsent(idempotencyKey, key -> new ReentrantLock());
+        String normalizedIdempotencyKey = normalizeKey(idempotencyKey, MESSAGE_IDEMPOTENCY_KEY_REQUIRED);
+        return idempotencyLocks.computeIfAbsent(normalizedIdempotencyKey, key -> new ReentrantLock());
     }
 
-    private void validateKey(String key, String message) {
-        if (key == null || key.isBlank()) {
+    private String normalizeKey(String key, String message) {
+        if (key == null) {
             throw new IllegalArgumentException(message);
         }
+        String normalized = key.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(message);
+        }
+        return normalized;
     }
 }
