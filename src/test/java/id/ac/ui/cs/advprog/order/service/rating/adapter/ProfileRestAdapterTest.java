@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileRestAdapterTest {
@@ -108,5 +109,14 @@ class ProfileRestAdapterTest {
     void submitRatingShouldThrowWhenJastiperIdInvalid() {
         assertThrows(IllegalArgumentException.class, () ->
                 adapter.submitRating("o1", "1", "not-number", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldFailFastWhenInternalAuthorizationBlank() {
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "   ");
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+        verify(restTemplate, never()).put(anyString(), any());
     }
 }
