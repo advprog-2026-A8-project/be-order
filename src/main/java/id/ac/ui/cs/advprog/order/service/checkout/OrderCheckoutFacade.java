@@ -143,6 +143,11 @@ public class OrderCheckoutFacade {
                     inventoryException
             );
         } catch (RuntimeException refundEx) {
+            checkoutAuditLogger.logRefundTriggered(
+                    order.getUserId(),
+                    totalPrice,
+                    CheckoutAuditReason.REFUND_COMPENSATION_FAILED
+            );
             IllegalStateException wrapped = new IllegalStateException(
                     "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.",
                     inventoryException

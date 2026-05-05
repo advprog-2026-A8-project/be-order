@@ -7,6 +7,7 @@ public final class CheckoutAuditReason {
     public static final String VALIDATION_INSUFFICIENT_STOCK = "insufficient_stock";
     public static final String VALIDATION_WALLET_DEBIT_FAILED = "wallet_debit_failed";
     public static final String REFUND_INVENTORY_REDUCE_FAILED = "inventory_reduce_failed";
+    public static final String REFUND_COMPENSATION_FAILED = "refund_compensation_failed";
 
     private CheckoutAuditReason() {
     }
