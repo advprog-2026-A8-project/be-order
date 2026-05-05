@@ -7,12 +7,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Objects;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +46,31 @@ class ProfileRestAdapterTest {
         verify(restTemplate).put(
                 eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
                 argThat(Objects::nonNull)
+        );
+    }
+
+    @Test
+    void submitRatingShouldSendAuthorizationHeaderAndStatsPayload() {
+        ReflectionTestUtils.setField(adapter, "internalAuthorization", "Bearer test-admin-token");
+
+        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+
+        verify(restTemplate).put(
+                eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
+                argThat(request -> {
+                    if (!(request instanceof HttpEntity<?> entity)) {
+                        return false;
+                    }
+
+                    Object body = entity.getBody();
+                    if (!(body instanceof Map<?, ?> payload)) {
+                        return false;
+                    }
+
+                    return "Bearer test-admin-token".equals(entity.getHeaders().getFirst("Authorization"))
+                            && Long.valueOf(10L).equals(payload.get("userId"))
+                            && Long.valueOf(1L).equals(payload.get("delta"));
+                })
         );
     }
 
