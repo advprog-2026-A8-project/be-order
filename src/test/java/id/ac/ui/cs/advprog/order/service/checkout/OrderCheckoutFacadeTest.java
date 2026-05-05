@@ -161,6 +161,19 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldWrapWhenRefundAlsoFailsAfterStockReductionFailure() {
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reduceStock("p1", 2);
+        doThrow(new IllegalStateException("refund down")).when(walletGateway).refund("u1", 10000.0);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+
+        assertTrue(ex.getMessage().contains("Dana direfund"));
+        verify(walletGateway).refund("u1", 10000.0);
+    }
+
+    @Test
     void checkoutWithIdempotencyKeyShouldStoreKeyOnFirstRequest() {
         when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
