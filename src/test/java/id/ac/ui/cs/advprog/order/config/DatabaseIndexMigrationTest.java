@@ -12,6 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @JdbcTest
 class DatabaseIndexMigrationTest {
+    private static final String INDEX_ORDERS_USER_STATUS = "IDX_ORDERS_USER_STATUS";
+    private static final String INDEX_ORDERS_JASTIPER_STATUS = "IDX_ORDERS_JASTIPER_STATUS";
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -28,12 +30,12 @@ class DatabaseIndexMigrationTest {
                 .toList();
 
         assertTrue(
-                normalized.contains("IDX_ORDERS_USER_STATUS"),
-                "Index IDX_ORDERS_USER_STATUS wajib ada untuk query user+status."
+                normalized.contains(INDEX_ORDERS_USER_STATUS),
+                "Index " + INDEX_ORDERS_USER_STATUS + " wajib ada untuk query user+status."
         );
         assertTrue(
-                normalized.contains("IDX_ORDERS_JASTIPER_STATUS"),
-                "Index IDX_ORDERS_JASTIPER_STATUS wajib ada untuk query jastiper+status."
+                normalized.contains(INDEX_ORDERS_JASTIPER_STATUS),
+                "Index " + INDEX_ORDERS_JASTIPER_STATUS + " wajib ada untuk query jastiper+status."
         );
     }
 }
