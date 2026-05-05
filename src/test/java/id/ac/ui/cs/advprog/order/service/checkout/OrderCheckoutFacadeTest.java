@@ -139,6 +139,23 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldRejectWhenInventoryPriceMissingOrInvalid() {
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+
+        product.setPrice(null);
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        product.setPrice(0.0);
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+
+        product.setPrice(-100.0);
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+    }
+
+    @Test
     void checkoutShouldPropagateWalletFailureAndNotReduceStock() {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
