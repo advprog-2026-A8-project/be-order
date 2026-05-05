@@ -22,7 +22,9 @@ import java.util.function.Supplier;
 public class WalletRestAdapter implements WalletGateway {
     private static final String DESCRIPTION_PAYMENT = "Order payment";
     private static final String DESCRIPTION_REFUND = "Order refund";
-    private static final String INTERNAL_AUTHORIZATION = "internal-order-service";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
+    private static final String EMPTY = "";
     private static final String PAY_PATH = "pay";
     private static final String REFUND_PATH = "refund";
 
@@ -34,12 +36,16 @@ public class WalletRestAdapter implements WalletGateway {
     @Value("${order.http.retry.max-attempts:2}")
     private int maxAttempts;
 
+    @Value("${order.wallet.internal-authorization:internal-order-service}")
+    private String internalAuthorization;
+
     @Override
     public void debit(String userId, double amount) {
         UUID walletUserId = parseWalletUserId(userId);
+        String authorizationToken = validateAndGetInternalAuthorization();
         executeWalletMutation(
                 buildWalletUrl(PAY_PATH),
-                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_PAYMENT, true),
+                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_PAYMENT, authorizationToken),
                 e -> new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e),
                 "Gagal mengakses Wallet service saat debit."
         );
@@ -50,7 +56,7 @@ public class WalletRestAdapter implements WalletGateway {
         UUID walletUserId = parseWalletUserId(userId);
         executeWalletMutation(
                 buildWalletUrl(REFUND_PATH),
-                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_REFUND, false),
+                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_REFUND, null),
                 e -> new IllegalStateException("Gagal melakukan refund ke wallet.", e),
                 "Gagal mengakses Wallet service saat refund."
         );
@@ -60,12 +66,12 @@ public class WalletRestAdapter implements WalletGateway {
             UUID userId,
             double amount,
             String description,
-            boolean withAuthorization
+            String authorizationToken
     ) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        if (withAuthorization) {
-            headers.set("Authorization", INTERNAL_AUTHORIZATION);
+        if (authorizationToken != null) {
+            headers.set(AUTHORIZATION_HEADER, authorizationToken);
         }
 
         Map<String, Object> payload = Map.of(
@@ -109,5 +115,23 @@ public class WalletRestAdapter implements WalletGateway {
             }
         }
         throw new IllegalStateException(transientFailureMessage, lastTransientError);
+    }
+
+    private String validateAndGetInternalAuthorization() {
+        String normalized = normalize(internalAuthorization);
+        if (normalized.isEmpty()) {
+            throw new IllegalStateException("Token internal authorization untuk Wallet belum dikonfigurasi.");
+        }
+        if (!normalized.startsWith(BEARER_PREFIX) || normalized.length() <= BEARER_PREFIX.length()) {
+            throw new IllegalStateException("Token internal authorization harus berformat 'Bearer <token>'.");
+        }
+        return normalized;
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return EMPTY;
+        }
+        return value.trim();
     }
 }
