@@ -28,6 +28,7 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public InventoryResponse getProduct(String productId) {
+        validateRetryConfiguration();
         String productUrl = buildProductUrl(productId);
 
         ResourceAccessException lastTransientError = null;
@@ -45,6 +46,7 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void reduceStock(String productId, int quantity) {
+        validateRetryConfiguration();
         InventoryResponse currentProduct = getProduct(productId);
         int updatedStock = resolveStock(currentProduct) - quantity;
         if (updatedStock < 0) {
@@ -111,5 +113,11 @@ public class InventoryRestAdapter implements InventoryGateway {
         return UriComponentsBuilder.fromUriString(inventoryUrl)
                 .pathSegment(UPDATE_PATH, productId)
                 .toUriString();
+    }
+
+    private void validateRetryConfiguration() {
+        if (maxAttempts <= 0) {
+            throw new IllegalStateException("Konfigurasi order.http.retry.max-attempts harus lebih dari 0.");
+        }
     }
 }
