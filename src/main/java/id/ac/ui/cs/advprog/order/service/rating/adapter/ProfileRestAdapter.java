@@ -42,8 +42,8 @@ public class ProfileRestAdapter implements ProfileGateway {
                              String productId,
                              int jastiperRating,
                              int productRating) {
+        validateAdapterConfiguration();
         String authorizationToken = validateAndGetInternalAuthorization();
-        validateRetryConfiguration();
 
         String statsUrl = UriComponentsBuilder.fromUriString(profileUrl)
                 .pathSegment("admin", "jastiper", "stats")
@@ -106,7 +106,7 @@ public class ProfileRestAdapter implements ProfileGateway {
         return parsed;
     }
 
-    private void validateRetryConfiguration() {
+    private void validateAdapterConfiguration() {
         if (maxAttempts <= 0) {
             throw new IllegalStateException("Konfigurasi order.http.retry.max-attempts harus lebih dari 0.");
         }
