@@ -21,6 +21,10 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
+    private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE =
+            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.";
+    private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED =
+            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.";
 
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
@@ -139,7 +143,7 @@ public class OrderCheckoutFacade {
                     CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
             );
             return new IllegalStateException(
-                    "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.",
+                    MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE,
                     inventoryException
             );
         } catch (RuntimeException refundEx) {
@@ -149,7 +153,7 @@ public class OrderCheckoutFacade {
                     CheckoutAuditReason.REFUND_COMPENSATION_FAILED
             );
             IllegalStateException wrapped = new IllegalStateException(
-                    "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.",
+                    MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED,
                     inventoryException
             );
             wrapped.addSuppressed(refundEx);
