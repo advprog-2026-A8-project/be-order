@@ -8,14 +8,20 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Map;
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
@@ -120,5 +126,43 @@ class WalletRestAdapterTest {
     void refundShouldThrowWhenUserIdIsNotUuid() {
         assertThrows(IllegalArgumentException.class, () -> adapter.refund("not-uuid", 10000.0));
         verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
+    void debitShouldSendUuidTypedUserIdInPayload() {
+        when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
+                .thenReturn(ResponseEntity.ok().build());
+
+        adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0);
+
+        verify(restTemplate).postForEntity(
+                eq("http://localhost:8082/wallet/pay"),
+                argThat(request -> hasUuidUserId(request, UUID.fromString("00000000-0000-0000-0000-000000000001"))),
+                eq(Void.class)
+        );
+    }
+
+    @Test
+    void refundShouldSendUuidTypedUserIdInPayload() {
+        when(restTemplate.postForEntity(anyString(), any(), eq(Void.class)))
+                .thenReturn(ResponseEntity.ok().build());
+
+        adapter.refund("00000000-0000-0000-0000-000000000001", 10000.0);
+
+        verify(restTemplate).postForEntity(
+                eq("http://localhost:8082/wallet/refund"),
+                argThat(request -> hasUuidUserId(request, UUID.fromString("00000000-0000-0000-0000-000000000001"))),
+                eq(Void.class)
+        );
+    }
+
+    private boolean hasUuidUserId(Object request, UUID expected) {
+        if (!(request instanceof HttpEntity<?> entity)) {
+            return false;
+        }
+        if (!(entity.getBody() instanceof Map<?, ?> body)) {
+            return false;
+        }
+        return expected.equals(body.get("userId"));
     }
 }
