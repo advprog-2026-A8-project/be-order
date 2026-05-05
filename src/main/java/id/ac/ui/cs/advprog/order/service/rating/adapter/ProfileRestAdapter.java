@@ -38,6 +38,8 @@ public class ProfileRestAdapter implements ProfileGateway {
                              String productId,
                              int jastiperRating,
                              int productRating) {
+        validateInternalAuthorization();
+
         String statsUrl = UriComponentsBuilder.fromUriString(profileUrl)
                 .pathSegment("admin", "jastiper", "stats")
                 .toUriString();
@@ -70,5 +72,11 @@ public class ProfileRestAdapter implements ProfileGateway {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set(AUTHORIZATION_HEADER, internalAuthorization);
         return new HttpEntity<>(buildStatsPayload(jastiperId), headers);
+    }
+
+    private void validateInternalAuthorization() {
+        if (internalAuthorization == null || internalAuthorization.isBlank()) {
+            throw new IllegalStateException("Token internal authorization untuk Profile belum dikonfigurasi.");
+        }
     }
 }
