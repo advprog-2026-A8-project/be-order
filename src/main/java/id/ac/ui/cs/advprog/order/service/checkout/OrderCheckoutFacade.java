@@ -135,11 +135,7 @@ public class OrderCheckoutFacade {
     }
 
     private IllegalStateException handleInventoryReduceFailure(Order order, double totalPrice, RuntimeException inventoryException) {
-        checkoutAuditLogger.logRefundTriggered(
-                order.getUserId(),
-                totalPrice,
-                CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED
-        );
+        logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
 
         try {
             walletGateway.refund(order.getUserId(), totalPrice);
@@ -148,11 +144,7 @@ public class OrderCheckoutFacade {
                     inventoryException
             );
         } catch (RuntimeException refundEx) {
-            checkoutAuditLogger.logRefundTriggered(
-                    order.getUserId(),
-                    totalPrice,
-                    CheckoutAuditReason.REFUND_COMPENSATION_FAILED
-            );
+            logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
             IllegalStateException wrapped = new IllegalStateException(
                     MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED,
                     inventoryException
@@ -160,5 +152,9 @@ public class OrderCheckoutFacade {
             wrapped.addSuppressed(refundEx);
             return wrapped;
         }
+    }
+
+    private void logRefundReason(Order order, double totalPrice, String reason) {
+        checkoutAuditLogger.logRefundTriggered(order.getUserId(), totalPrice, reason);
     }
 }
