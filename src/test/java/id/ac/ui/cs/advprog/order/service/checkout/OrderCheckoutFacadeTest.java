@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -283,5 +284,36 @@ class OrderCheckoutFacadeTest {
         verify(checkoutAuditLogger).logIdempotencyMismatch("idem-1", "order-100");
         verify(walletGateway, never()).debit(any(), any(Double.class));
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void checkoutWithIdempotencyShouldRecoverWhenDuplicateKeyRaceHappens() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId(null);
+        existingOrder.setAlamatPengiriman(null);
+
+        when(checkoutLockManager.getLockForIdempotencyKey("idem-race")).thenReturn(new ReentrantLock());
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(orderIdempotencyRepository.findById("idem-race"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race", "order-100")));
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-100");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        Order result = checkoutFacade.checkout(order, "idem-race");
+
+        assertEquals("order-100", result.getId());
     }
 }
