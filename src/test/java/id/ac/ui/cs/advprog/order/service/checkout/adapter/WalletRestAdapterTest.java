@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -125,6 +126,16 @@ class WalletRestAdapterTest {
     @Test
     void refundShouldThrowWhenUserIdIsNotUuid() {
         assertThrows(IllegalArgumentException.class, () -> adapter.refund("not-uuid", 10000.0));
+        verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
+    }
+
+    @Test
+    void debitShouldFailFastWhenMaxAttemptsIsNotPositive() {
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", 10000.0));
+        assertTrue(exception.getMessage().contains("max-attempts"));
         verify(restTemplate, never()).postForEntity(anyString(), any(), eq(Void.class));
     }
 
