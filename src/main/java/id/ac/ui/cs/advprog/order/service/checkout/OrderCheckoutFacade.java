@@ -8,6 +8,7 @@ import id.ac.ui.cs.advprog.order.repository.OrderIdempotencyRepository;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
@@ -65,8 +66,15 @@ public class OrderCheckoutFacade {
             }
 
             Order savedOrder = performCheckout(order);
-            orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
-            return savedOrder;
+            try {
+                orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
+                return savedOrder;
+            } catch (DataIntegrityViolationException ex) {
+                OrderIdempotency raceWinnerRecord = orderIdempotencyRepository.findById(idempotencyKey)
+                        .orElseThrow(() -> ex);
+                return orderRepository.findById(raceWinnerRecord.getOrderId())
+                        .orElseThrow(() -> new IllegalStateException(MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND));
+            }
         } finally {
             idempotencyLock.unlock();
         }
