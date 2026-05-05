@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.order.service.checkout.adapter;
 
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
+import id.ac.ui.cs.advprog.order.service.common.AdapterConfigValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -23,8 +24,7 @@ public class WalletRestAdapter implements WalletGateway {
     private static final String DESCRIPTION_PAYMENT = "Order payment";
     private static final String DESCRIPTION_REFUND = "Order refund";
     private static final String AUTHORIZATION_HEADER = "Authorization";
-    private static final String BEARER_PREFIX = "Bearer ";
-    private static final String EMPTY = "";
+    private static final String ADAPTER_NAME = "Wallet";
     private static final String PAY_PATH = "pay";
     private static final String REFUND_PATH = "refund";
 
@@ -123,7 +123,7 @@ public class WalletRestAdapter implements WalletGateway {
             Function<HttpClientErrorException, RuntimeException> httpExceptionMapper,
             String transientFailureMessage
     ) {
-        validateAdapterConfiguration();
+        AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
 
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -139,27 +139,7 @@ public class WalletRestAdapter implements WalletGateway {
         throw new IllegalStateException(transientFailureMessage, lastTransientError);
     }
 
-    private void validateAdapterConfiguration() {
-        if (maxAttempts <= 0) {
-            throw new IllegalStateException("Konfigurasi order.http.retry.max-attempts harus lebih dari 0.");
-        }
-    }
-
     private String validateAndGetInternalAuthorization() {
-        String normalized = normalize(internalAuthorization);
-        if (normalized.isEmpty()) {
-            throw new IllegalStateException("Token internal authorization untuk Wallet belum dikonfigurasi.");
-        }
-        if (!normalized.startsWith(BEARER_PREFIX) || normalized.length() <= BEARER_PREFIX.length()) {
-            throw new IllegalStateException("Token internal authorization harus berformat 'Bearer <token>'.");
-        }
-        return normalized;
-    }
-
-    private String normalize(String value) {
-        if (value == null) {
-            return EMPTY;
-        }
-        return value.trim();
+        return AdapterConfigValidator.validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
     }
 }
