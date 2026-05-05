@@ -45,7 +45,12 @@ public class WalletRestAdapter implements WalletGateway {
         String authorizationToken = validateAndGetInternalAuthorization();
         executeWalletMutation(
                 buildWalletUrl(PAY_PATH),
-                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_PAYMENT, authorizationToken),
+                () -> buildWalletRequestWithAuthorization(
+                        walletUserId,
+                        amount,
+                        DESCRIPTION_PAYMENT,
+                        authorizationToken
+                ),
                 e -> new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e),
                 "Gagal mengakses Wallet service saat debit."
         );
@@ -56,7 +61,7 @@ public class WalletRestAdapter implements WalletGateway {
         UUID walletUserId = parseWalletUserId(userId);
         executeWalletMutation(
                 buildWalletUrl(REFUND_PATH),
-                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_REFUND, null),
+                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_REFUND),
                 e -> new IllegalStateException("Gagal melakukan refund ke wallet.", e),
                 "Gagal mengakses Wallet service saat refund."
         );
@@ -65,14 +70,29 @@ public class WalletRestAdapter implements WalletGateway {
     private HttpEntity<Map<String, Object>> buildWalletRequest(
             UUID userId,
             double amount,
+            String description
+    ) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> payload = Map.of(
+                "userId", userId,
+                "amount", amount,
+                "description", description
+        );
+
+        return new HttpEntity<>(payload, headers);
+    }
+
+    private HttpEntity<Map<String, Object>> buildWalletRequestWithAuthorization(
+            UUID userId,
+            double amount,
             String description,
             String authorizationToken
     ) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        if (authorizationToken != null) {
-            headers.set(AUTHORIZATION_HEADER, authorizationToken);
-        }
+        headers.set(AUTHORIZATION_HEADER, authorizationToken);
 
         Map<String, Object> payload = Map.of(
                 "userId", userId,
