@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -135,6 +136,16 @@ class ProfileRestAdapterTest {
 
         assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+        verify(restTemplate, never()).put(anyString(), any());
+    }
+
+    @Test
+    void submitRatingShouldFailFastWhenMaxAttemptsIsNotPositive() {
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+        assertTrue(exception.getMessage().contains("max-attempts"));
         verify(restTemplate, never()).put(anyString(), any());
     }
 }
