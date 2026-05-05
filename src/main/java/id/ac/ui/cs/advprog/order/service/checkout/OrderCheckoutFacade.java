@@ -81,11 +81,7 @@ public class OrderCheckoutFacade {
                 checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
                 throw new IllegalArgumentException("Stok barang tidak mencukupi!");
             }
-
-            if (product.getPrice() == null || product.getPrice() <= 0) {
-                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_PRICE);
-                throw new IllegalArgumentException(MESSAGE_INVALID_PRICE);
-            }
+            validateProductPrice(product);
 
             double totalPrice = product.getPrice() * order.getJumlah();
             try {
@@ -138,6 +134,13 @@ public class OrderCheckoutFacade {
                 && Objects.equals(existingOrder.getJastiperId(), incomingOrder.getJastiperId())
                 && Objects.equals(existingOrder.getJumlah(), incomingOrder.getJumlah())
                 && Objects.equals(existingOrder.getAlamatPengiriman(), incomingOrder.getAlamatPengiriman());
+    }
+
+    private void validateProductPrice(InventoryResponse product) {
+        if (product.getPrice() == null || product.getPrice() <= 0) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_PRICE);
+            throw new IllegalArgumentException(MESSAGE_INVALID_PRICE);
+        }
     }
 
     private IllegalStateException handleInventoryReduceFailure(Order order, double totalPrice, RuntimeException inventoryException) {
