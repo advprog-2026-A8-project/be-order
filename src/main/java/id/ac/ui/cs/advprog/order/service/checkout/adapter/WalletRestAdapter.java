@@ -28,6 +28,10 @@ public class WalletRestAdapter implements WalletGateway {
     private static final String ERROR_RETRY_EXHAUSTED = "Gagal mengakses Wallet contract service.";
     private static final String ERROR_WALLET_INSUFFICIENT = "Saldo Wallet tidak mencukupi atau User tidak ditemukan!";
     private static final String ERROR_WALLET_REFUND = "Gagal melakukan refund ke wallet.";
+    private static final String PAYLOAD_USER_ID = "userId";
+    private static final String PAYLOAD_AMOUNT = "amount";
+    private static final String PAYLOAD_ORDER_ID = "orderId";
+    private static final String PAYLOAD_IDEMPOTENCY_KEY = "idempotencyKey";
 
     private final RestTemplate restTemplate;
 
@@ -49,12 +53,12 @@ public class WalletRestAdapter implements WalletGateway {
                         buildWalletUrl(CHECK_BALANCE_PATH),
                         buildAuthorizedRequest(
                                 authorizationToken,
-                                Map.of("userId", walletUserId, "amount", amount)
+                                Map.of(PAYLOAD_USER_ID, walletUserId, PAYLOAD_AMOUNT, amount)
                         ),
                         Map.class
                 )
         );
-        if (result == null || !result.success()) {
+        if (!result.success()) {
             throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
         }
     }
@@ -69,16 +73,16 @@ public class WalletRestAdapter implements WalletGateway {
                         buildAuthorizedRequest(
                                 authorizationToken,
                                 Map.of(
-                                        "userId", walletUserId,
-                                        "orderId", orderId,
-                                        "amount", amount,
-                                        "idempotencyKey", idempotencyKey
+                                        PAYLOAD_USER_ID, walletUserId,
+                                        PAYLOAD_ORDER_ID, orderId,
+                                        PAYLOAD_AMOUNT, amount,
+                                        PAYLOAD_IDEMPOTENCY_KEY, idempotencyKey
                                 )
                         ),
                         Map.class
                 )
         );
-        if (result == null || !result.success()) {
+        if (!result.success()) {
             throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
         }
     }
@@ -93,16 +97,16 @@ public class WalletRestAdapter implements WalletGateway {
                         buildAuthorizedRequest(
                                 authorizationToken,
                                 Map.of(
-                                        "userId", walletUserId,
-                                        "orderId", orderId,
-                                        "amount", amount,
-                                        "idempotencyKey", idempotencyKey
+                                        PAYLOAD_USER_ID, walletUserId,
+                                        PAYLOAD_ORDER_ID, orderId,
+                                        PAYLOAD_AMOUNT, amount,
+                                        PAYLOAD_IDEMPOTENCY_KEY, idempotencyKey
                                 )
                         ),
                         Map.class
                 )
         );
-        if (result == null || !result.success()) {
+        if (!result.success()) {
             throw new IllegalStateException(ERROR_WALLET_REFUND);
         }
     }
