@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,6 +37,8 @@ class OrderCheckoutFacadeTest {
 
     @Mock
     private WalletGateway walletGateway;
+    @Mock
+    private VoucherGateway voucherGateway;
 
     @Mock
     private OrderRepository orderRepository;
@@ -83,6 +86,53 @@ class OrderCheckoutFacadeTest {
         verify(checkoutAuditLogger).logCheckoutStarted(order, null);
         verify(checkoutAuditLogger).logDebitSucceeded("u1", 10000.0);
         verify(checkoutAuditLogger).logStockReductionSucceeded("p1", 2);
+        verify(voucherGateway, never()).validateDiscount(anyString(), anyDouble());
+        verify(voucherGateway, never()).useVoucher(anyString());
+    }
+
+    @Test
+    void checkoutWithVoucherShouldApplyDiscountAndUseVoucher() {
+        order.setVoucherCode("HEMAT10");
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1500.0);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Order result = checkoutFacade.checkout(order);
+
+        assertEquals(8500.0, result.getTotalAmount());
+        verify(walletGateway).ensureSufficientBalance("u1", 8500.0);
+        verify(walletGateway).debit(anyString(), anyString(), eq(8500.0), anyString());
+        verify(voucherGateway).useVoucher("HEMAT10");
+    }
+
+    @Test
+    void checkoutWithInvalidVoucherShouldFailBeforeWalletCharge() {
+        order.setVoucherCode("BADVOUCHER");
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalArgumentException("invalid voucher"))
+                .when(voucherGateway).validateDiscount("BADVOUCHER", 10000.0);
+
+        assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
+        verify(walletGateway, never()).debit(anyString(), anyString(), anyDouble(), anyString());
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_VOUCHER);
+    }
+
+    @Test
+    void checkoutShouldStillSucceedWhenVoucherUseFailsAfterCheckout() {
+        order.setVoucherCode("HEMAT10");
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1000.0);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new IllegalStateException("voucher service down")).when(voucherGateway).useVoucher("HEMAT10");
+
+        Order result = checkoutFacade.checkout(order);
+
+        assertEquals(OrderStatus.PAID, result.getStatus());
+        assertEquals(9000.0, result.getTotalAmount());
+        verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VOUCHER_USE_FAILED_AFTER_CHECKOUT);
     }
 
     @Test

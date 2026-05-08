@@ -76,6 +76,23 @@ class OrderControllerTest {
     }
 
     @Test
+    void testCheckoutWithVoucherCodeShouldPassVoucherToService() throws Exception {
+        when(orderService.createOrder(any(Order.class), isNull())).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/checkout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "productId", "prod-abc",
+                                "userId", "user-def",
+                                "jastiperId", "jastiper-1",
+                                "jumlah", 2,
+                                "alamatPengiriman", "Jakarta",
+                                "voucherCode", "HEMAT10"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void testCheckoutShouldTrimIdempotencyKeyBeforeCallingService() throws Exception {
         when(orderService.createOrder(any(Order.class), eq("idem-1"))).thenReturn(order);
 

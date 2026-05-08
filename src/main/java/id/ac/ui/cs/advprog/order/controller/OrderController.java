@@ -40,6 +40,7 @@ public class OrderController {
         order.setJastiperId(orderRequest.getJastiperId());
         order.setJumlah(orderRequest.getJumlah());
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
+        order.setVoucherCode(orderRequest.getVoucherCode());
         order.setStatus(OrderStatus.PENDING);
 
         Order savedOrder = orderService.createOrder(order, normalizedIdempotencyKey);

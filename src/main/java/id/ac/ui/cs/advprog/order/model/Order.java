@@ -41,6 +41,8 @@ public class Order {
     @NotBlank(message = MESSAGE_ADDRESS_REQUIRED)
     @Column(nullable = false)
     private String alamatPengiriman;
+    @Transient
+    private String voucherCode;
 
     @NotNull(message = MESSAGE_TOTAL_AMOUNT_REQUIRED)
     @Positive(message = MESSAGE_TOTAL_AMOUNT_POSITIVE)
