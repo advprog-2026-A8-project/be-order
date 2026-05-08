@@ -4,6 +4,7 @@ import id.ac.ui.cs.advprog.bewallettransaksi.grpc.WalletContractServiceGrpc;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -52,7 +53,6 @@ class WalletGrpcStubFactoryTest {
     @Test
     void destroyShouldBeSafeWhenChannelNotInitialized() {
         WalletGrpcStubFactory factory = new WalletGrpcStubFactory();
-        ReflectionTestUtils.invokeMethod(factory, "destroy");
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(factory, "destroy"));
     }
 }
-

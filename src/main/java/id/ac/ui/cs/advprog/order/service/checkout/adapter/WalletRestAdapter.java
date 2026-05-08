@@ -91,21 +91,24 @@ public class WalletRestAdapter implements WalletGateway {
                 if (result == null) {
                     throw new IllegalStateException(ERROR_EMPTY_RESPONSE);
                 }
-                if (result instanceof WalletMutationResponse mutationResponse
+                boolean shouldRetryByContract = result instanceof WalletMutationResponse mutationResponse
                         && !mutationResponse.getSuccess()
-                        && mutationResponse.getRetryable()) {
-                    continue;
+                        && mutationResponse.getRetryable();
+                if (shouldRetryByContract) {
+                    if (attempt < maxAttempts) {
+                        continue;
+                    }
+                    break;
                 }
                 return result;
             } catch (StatusRuntimeException ex) {
-                if (isRetryableStatus(ex.getStatus()) && attempt < maxAttempts) {
-                    lastTransientError = ex;
-                    continue;
-                }
                 if (isInvalidRequestStatus(ex.getStatus())) {
                     throw new IllegalArgumentException(ERROR_REQUEST_INVALID, ex);
                 }
                 lastTransientError = ex;
+                if (!isRetryableStatus(ex.getStatus()) || attempt == maxAttempts) {
+                    break;
+                }
             }
         }
         throw new IllegalStateException(ERROR_RETRY_EXHAUSTED, lastTransientError);
