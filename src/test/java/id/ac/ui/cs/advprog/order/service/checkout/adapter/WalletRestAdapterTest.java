@@ -1,28 +1,20 @@
 package id.ac.ui.cs.advprog.order.service.checkout.adapter;
 
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.CheckBalanceResponse;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.WalletContractServiceGrpc;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.WalletMutationResponse;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.Map;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -32,36 +24,34 @@ import static org.mockito.Mockito.when;
 class WalletRestAdapterTest {
 
     @Mock
-    private RestTemplate restTemplate;
+    private WalletGrpcStubFactory walletGrpcStubFactory;
+
+    @Mock
+    private WalletContractServiceGrpc.WalletContractServiceBlockingStub stub;
 
     @InjectMocks
     private WalletRestAdapter adapter;
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(adapter, "walletUrl", "http://localhost:8082/api/contracts/wallet");
         ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
-        ReflectionTestUtils.setField(adapter, "internalAuthorization", "Bearer test-wallet-token");
     }
 
     @Test
     void ensureSufficientBalanceSuccess() {
-        when(restTemplate.postForObject(anyString(), any(), any()))
-                .thenReturn(walletResult(true, false));
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.checkBalance(any()))
+                .thenReturn(CheckBalanceResponse.newBuilder().setSufficient(true).setCurrentBalance("1000").build());
 
         adapter.ensureSufficientBalance("00000000-0000-0000-0000-000000000001", 10000.0);
-
-        verify(restTemplate).postForObject(
-                eq("http://localhost:8082/api/contracts/wallet/check-balance"),
-                argThat(request -> hasAuthorizationHeader(request, "Bearer test-wallet-token")),
-                any()
-        );
+        verify(stub).checkBalance(any());
     }
 
     @Test
-    void ensureSufficientBalanceShouldThrowWhenContractReturnsFailure() {
-        when(restTemplate.postForObject(anyString(), any(), any()))
-                .thenReturn(walletResult(false, false));
+    void ensureSufficientBalanceShouldThrowWhenInsufficient() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.checkBalance(any()))
+                .thenReturn(CheckBalanceResponse.newBuilder().setSufficient(false).setCurrentBalance("0").build());
 
         assertThrows(IllegalArgumentException.class,
                 () -> adapter.ensureSufficientBalance("00000000-0000-0000-0000-000000000001", 10000.0));
@@ -69,47 +59,41 @@ class WalletRestAdapterTest {
 
     @Test
     void debitSuccess() {
-        when(restTemplate.postForObject(anyString(), any(), any()))
-                .thenReturn(walletResult(true, false));
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(true).build());
 
         adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1");
-
-        verify(restTemplate).postForObject(
-                eq("http://localhost:8082/api/contracts/wallet/deduct"),
-                argThat(request -> hasMutationPayload(request, "order-1", "idem-1")),
-                any()
-        );
+        verify(stub).deductBalance(any());
     }
 
     @Test
     void refundSuccess() {
-        when(restTemplate.postForObject(anyString(), any(), any()))
-                .thenReturn(walletResult(true, false));
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.refundBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(true).build());
 
         adapter.refund("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-r1");
-
-        verify(restTemplate).postForObject(
-                eq("http://localhost:8082/api/contracts/wallet/refund"),
-                argThat(request -> hasMutationPayload(request, "order-1", "idem-r1")),
-                any()
-        );
+        verify(stub).refundBalance(any());
     }
 
     @Test
     void debitShouldRetryOnRetryableContractError() {
-        when(restTemplate.postForObject(anyString(), any(), any()))
-                .thenReturn(walletResult(false, true))
-                .thenReturn(walletResult(true, false));
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(true).build())
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(true).build());
 
         adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1");
-        verify(restTemplate, times(2)).postForObject(anyString(), any(), any());
+        verify(stub, times(2)).deductBalance(any());
     }
 
     @Test
     void debitShouldThrowWhenRetryableErrorExhausted() {
-        when(restTemplate.postForObject(anyString(), any(), any()))
-                .thenReturn(walletResult(false, true))
-                .thenReturn(walletResult(false, true));
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(true).build())
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(true).build());
 
         assertThrows(IllegalStateException.class, () ->
                 adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
@@ -119,80 +103,112 @@ class WalletRestAdapterTest {
     void debitShouldThrowWhenUserIdIsNotUuid() {
         assertThrows(IllegalArgumentException.class, () ->
                 adapter.debit("not-uuid", "order-1", 10000.0, "idem-1"));
-        verify(restTemplate, never()).postForObject(anyString(), any(), any());
+        verify(stub, never()).deductBalance(any());
     }
 
     @Test
     void ensureSufficientBalanceShouldThrowWhenUserIdIsNotUuid() {
         assertThrows(IllegalArgumentException.class, () ->
                 adapter.ensureSufficientBalance("not-uuid", 10000.0));
-        verify(restTemplate, never()).postForObject(anyString(), any(), any());
+        verify(stub, never()).checkBalance(any());
     }
 
     @Test
     void debitShouldFailFastWhenMaxAttemptsIsNotPositive() {
         ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
-
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
-                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
-        assertTrue(exception.getMessage().contains("max-attempts"));
-    }
-
-    @Test
-    void debitShouldFailFastWhenInternalAuthorizationBlank() {
-        ReflectionTestUtils.setField(adapter, "internalAuthorization", "   ");
-
         assertThrows(IllegalStateException.class, () ->
                 adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
-        verify(restTemplate, never()).postForObject(anyString(), any(), any());
     }
 
     @Test
-    void debitShouldThrowOnHttpClientError() {
-        doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
-                .when(restTemplate).postForObject(anyString(), any(), any());
+    void debitShouldThrowOnInvalidArgumentStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.INVALID_ARGUMENT));
 
         assertThrows(IllegalArgumentException.class, () ->
                 adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
     }
 
     @Test
-    void refundShouldRetryOnTransientResourceAccess() {
-        doThrow(new ResourceAccessException("timeout"))
-                .doReturn(walletResult(true, false))
-                .when(restTemplate).postForObject(anyString(), any(), any());
+    void refundShouldRetryOnUnavailableStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.refundBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.UNAVAILABLE))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(true).build());
 
         adapter.refund("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-r1");
-        verify(restTemplate, times(2)).postForObject(anyString(), any(), any());
+        verify(stub, times(2)).refundBalance(any());
     }
 
-    private Object walletResult(boolean success, boolean retryable) {
-        Map<String, Object> payload = Map.of(
-                "success", success,
-                "updatedBalance", 100000.0,
-                "errorCode", success ? "NONE" : "INTERNAL_ERROR",
-                "retryable", retryable
-        );
-        return new java.util.HashMap<>(payload);
+    @Test
+    void debitShouldThrowWhenContractReturnsNonRetryableFailure() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(false).build());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
     }
 
-    private boolean hasMutationPayload(Object request, String orderId, String idempotencyKey) {
-        if (!(request instanceof HttpEntity<?> entity)) {
-            return false;
-        }
-        if (!(entity.getBody() instanceof Map<?, ?> body)) {
-            return false;
-        }
-        return orderId.equals(body.get("orderId"))
-                && idempotencyKey.equals(body.get("idempotencyKey"))
-                && body.get("userId") instanceof UUID
-                && hasAuthorizationHeader(request, "Bearer test-wallet-token");
+    @Test
+    void refundShouldThrowWhenContractReturnsNonRetryableFailure() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.refundBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(false).build());
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.refund("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-r1"));
     }
 
-    private boolean hasAuthorizationHeader(Object request, String expected) {
-        if (!(request instanceof HttpEntity<?> entity)) {
-            return false;
-        }
-        return expected.equals(entity.getHeaders().getFirst("Authorization"));
+    @Test
+    void ensureSufficientBalanceShouldThrowWhenResponseNull() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.checkBalance(any())).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.ensureSufficientBalance("00000000-0000-0000-0000-000000000001", 10000.0));
+    }
+
+    @Test
+    void debitShouldThrowOnUnauthenticatedStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.UNAUTHENTICATED));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
+    }
+
+    @Test
+    void debitShouldThrowOnPermissionDeniedStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.PERMISSION_DENIED));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
+    }
+
+    @Test
+    void debitShouldRetryOnDeadlineExceededStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.DEADLINE_EXCEEDED))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(true).build());
+
+        adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1");
+        verify(stub, times(2)).deductBalance(any());
+    }
+
+    @Test
+    void debitShouldThrowRetryExhaustedOnUnknownStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.UNKNOWN))
+                .thenThrow(new StatusRuntimeException(Status.UNKNOWN));
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
     }
 }

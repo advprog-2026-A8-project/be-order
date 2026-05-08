@@ -22,4 +22,5 @@ public class OrderRequest {
     private Integer jumlah;
     @NotBlank(message = "alamatPengiriman wajib diisi")
     private String alamatPengiriman;
+    private String voucherCode;
 }

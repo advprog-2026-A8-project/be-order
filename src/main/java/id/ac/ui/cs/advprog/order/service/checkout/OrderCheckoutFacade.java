@@ -21,6 +21,7 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
     private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
     private static final String MESSAGE_INVALID_PRICE = "Harga produk tidak valid";
+    private static final String MESSAGE_INVALID_VOUCHER = "Voucher tidak valid atau tidak dapat digunakan.";
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
@@ -33,6 +34,7 @@ public class OrderCheckoutFacade {
 
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
+    private final VoucherGateway voucherGateway;
     private final OrderRepository orderRepository;
     private final OrderIdempotencyRepository orderIdempotencyRepository;
     private final CheckoutLockManager checkoutLockManager;
@@ -94,7 +96,9 @@ public class OrderCheckoutFacade {
             }
             validateProductPrice(product);
 
-            double totalPrice = product.getPrice() * order.getJumlah();
+            double baseTotalPrice = product.getPrice() * order.getJumlah();
+            double discountAmount = resolveDiscountAmount(order.getVoucherCode(), baseTotalPrice);
+            double totalPrice = Math.max(0.0, baseTotalPrice - discountAmount);
             try {
                 walletGateway.ensureSufficientBalance(order.getUserId(), totalPrice);
                 walletGateway.debit(order.getUserId(), order.getId(), totalPrice, walletIdempotencyKey);
@@ -113,7 +117,9 @@ public class OrderCheckoutFacade {
 
             order.setStatus(OrderStatus.PAID);
             order.setTotalAmount(totalPrice);
-            return orderRepository.save(order);
+            Order savedOrder = orderRepository.save(order);
+            tryUseVoucher(order.getVoucherCode());
+            return savedOrder;
         } finally {
             lock.unlock();
         }
@@ -152,6 +158,29 @@ public class OrderCheckoutFacade {
         if (product.getPrice() == null || product.getPrice() <= 0) {
             checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_PRICE);
             throw new IllegalArgumentException(MESSAGE_INVALID_PRICE);
+        }
+    }
+
+    private double resolveDiscountAmount(String voucherCode, double baseTotalPrice) {
+        if (isBlank(voucherCode)) {
+            return 0.0;
+        }
+        try {
+            return voucherGateway.validateDiscount(voucherCode.trim(), baseTotalPrice);
+        } catch (IllegalArgumentException ex) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_VOUCHER);
+            throw new IllegalArgumentException(MESSAGE_INVALID_VOUCHER, ex);
+        }
+    }
+
+    private void tryUseVoucher(String voucherCode) {
+        if (isBlank(voucherCode)) {
+            return;
+        }
+        try {
+            voucherGateway.useVoucher(voucherCode.trim());
+        } catch (RuntimeException ex) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VOUCHER_USE_FAILED_AFTER_CHECKOUT);
         }
     }
 
