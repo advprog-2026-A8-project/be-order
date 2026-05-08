@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -75,7 +77,8 @@ class OrderCheckoutFacadeTest {
         Order result = checkoutFacade.checkout(order);
 
         assertEquals(OrderStatus.PAID, result.getStatus());
-        verify(walletGateway).debit("u1", 10000.0);
+        verify(walletGateway).ensureSufficientBalance("u1", 10000.0);
+        verify(walletGateway).debit(anyString(), anyString(), anyDouble(), anyString());
         verify(inventoryGateway).reduceStock("p1", 2);
         verify(checkoutAuditLogger).logCheckoutStarted(order, null);
         verify(checkoutAuditLogger).logDebitSucceeded("u1", 10000.0);
@@ -160,7 +163,8 @@ class OrderCheckoutFacadeTest {
     void checkoutShouldPropagateWalletFailureAndNotReduceStock() {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
-        doThrow(new IllegalArgumentException("wallet error")).when(walletGateway).debit("u1", 10000.0);
+        doThrow(new IllegalArgumentException("wallet error"))
+                .when(walletGateway).ensureSufficientBalance("u1", 10000.0);
 
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
@@ -174,7 +178,7 @@ class OrderCheckoutFacadeTest {
         doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reduceStock("p1", 2);
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
-        verify(walletGateway).refund("u1", 10000.0);
+        verify(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
         verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
     }
 
@@ -183,12 +187,13 @@ class OrderCheckoutFacadeTest {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reduceStock("p1", 2);
-        doThrow(new IllegalStateException("refund down")).when(walletGateway).refund("u1", 10000.0);
+        doThrow(new IllegalStateException("refund down"))
+                .when(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
 
         assertTrue(ex.getMessage().contains("Dana direfund"));
-        verify(walletGateway).refund("u1", 10000.0);
+        verify(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
         verify(checkoutAuditLogger).logRefundTriggered(
                 "u1",
                 10000.0,
@@ -237,7 +242,7 @@ class OrderCheckoutFacadeTest {
         Order result = checkoutFacade.checkout(order, "idem-1");
 
         assertEquals("order-100", result.getId());
-        verify(walletGateway, never()).debit(any(), any(Double.class));
+        verify(walletGateway, never()).debit(anyString(), anyString(), anyDouble(), anyString());
         verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
         verify(orderRepository, times(0)).save(any(Order.class));
         verify(checkoutAuditLogger).logIdempotencyHit("idem-1", "order-100");
@@ -282,7 +287,7 @@ class OrderCheckoutFacadeTest {
 
         assertTrue(ex.getMessage().contains("Idempotency key"));
         verify(checkoutAuditLogger).logIdempotencyMismatch("idem-1", "order-100");
-        verify(walletGateway, never()).debit(any(), any(Double.class));
+        verify(walletGateway, never()).debit(anyString(), anyString(), anyDouble(), anyString());
         verify(orderRepository, never()).save(any(Order.class));
     }
 

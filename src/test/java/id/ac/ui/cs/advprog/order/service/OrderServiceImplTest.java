@@ -144,7 +144,7 @@ class OrderServiceImplTest {
         Order result = orderService.cancelOrderByJastiper("order-1", "jastiper-1");
 
         assertEquals(OrderStatus.CANCELLED, result.getStatus());
-        verify(walletGateway).refund("u1", 10000.0);
+        verify(walletGateway).refund(eq("u1"), eq("order-1"), eq(10000.0), anyString());
     }
 
     @Test
@@ -175,7 +175,7 @@ class OrderServiceImplTest {
         when(orderRepository.save(any(Order.class))).thenReturn(order);
 
         orderService.cancelOrderByJastiper("order-1", "jastiper-1");
-        verify(walletGateway).refund("u1", 0.0);
+        verify(walletGateway).refund(eq("u1"), eq("order-1"), eq(0.0), anyString());
     }
 
     @Test

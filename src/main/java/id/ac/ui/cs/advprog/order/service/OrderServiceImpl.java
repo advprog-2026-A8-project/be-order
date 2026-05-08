@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
     private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper tidak valid untuk update statistik.";
+    private static final String CANCEL_REFUND_IDEMPOTENCY_PREFIX = "cancel-refund-";
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
 
@@ -101,7 +102,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         double refundAmount = order.getTotalAmount() == null ? 0.0 : order.getTotalAmount();
-        walletGateway.refund(order.getUserId(), refundAmount);
+        walletGateway.refund(
+                order.getUserId(),
+                order.getId(),
+                refundAmount,
+                CANCEL_REFUND_IDEMPOTENCY_PREFIX + order.getId()
+        );
         order.setStatus(OrderStatus.CANCELLED);
         return orderRepository.save(order);
     }

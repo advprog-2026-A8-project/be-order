@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Component
@@ -27,6 +28,8 @@ public class OrderCheckoutFacade {
             "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.";
     private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED =
             "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.";
+    private static final String DEFAULT_WALLET_IDEMPOTENCY_PREFIX = "wallet-order-";
+    private static final String REFUND_SUFFIX = "-refund";
 
     private final InventoryGateway inventoryGateway;
     private final WalletGateway walletGateway;
@@ -46,7 +49,7 @@ public class OrderCheckoutFacade {
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             return checkoutWithIdempotency(order, idempotencyKey.trim());
         }
-        return performCheckout(order);
+        return performCheckout(order, null);
     }
 
     private Order checkoutWithIdempotency(Order order, String idempotencyKey) {
@@ -65,7 +68,7 @@ public class OrderCheckoutFacade {
                 return existingOrder;
             }
 
-            Order savedOrder = performCheckout(order);
+            Order savedOrder = performCheckout(order, idempotencyKey);
             try {
                 orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
                 return savedOrder;
@@ -77,10 +80,13 @@ public class OrderCheckoutFacade {
         }
     }
 
-    private Order performCheckout(Order order) {
+    private Order performCheckout(Order order, String idempotencyKey) {
         ReentrantLock lock = checkoutLockManager.getLockForProduct(order.getProductId());
         lock.lock();
         try {
+            ensureOrderId(order);
+            String walletIdempotencyKey = resolveWalletIdempotencyKey(order, idempotencyKey);
+
             InventoryResponse product = inventoryGateway.getProduct(order.getProductId());
             if (product == null || product.getProductQuantity() < order.getJumlah()) {
                 checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
@@ -90,7 +96,8 @@ public class OrderCheckoutFacade {
 
             double totalPrice = product.getPrice() * order.getJumlah();
             try {
-                walletGateway.debit(order.getUserId(), totalPrice);
+                walletGateway.ensureSufficientBalance(order.getUserId(), totalPrice);
+                walletGateway.debit(order.getUserId(), order.getId(), totalPrice, walletIdempotencyKey);
             } catch (RuntimeException ex) {
                 checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_WALLET_DEBIT_FAILED);
                 throw ex;
@@ -101,7 +108,7 @@ public class OrderCheckoutFacade {
                 inventoryGateway.reduceStock(order.getProductId(), order.getJumlah());
                 checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
-                throw handleInventoryReduceFailure(order, totalPrice, ex);
+                throw handleInventoryReduceFailure(order, totalPrice, walletIdempotencyKey, ex);
             }
 
             order.setStatus(OrderStatus.PAID);
@@ -148,11 +155,21 @@ public class OrderCheckoutFacade {
         }
     }
 
-    private IllegalStateException handleInventoryReduceFailure(Order order, double totalPrice, RuntimeException inventoryException) {
+    private IllegalStateException handleInventoryReduceFailure(
+            Order order,
+            double totalPrice,
+            String walletIdempotencyKey,
+            RuntimeException inventoryException
+    ) {
         logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
 
         try {
-            walletGateway.refund(order.getUserId(), totalPrice);
+            walletGateway.refund(
+                    order.getUserId(),
+                    order.getId(),
+                    totalPrice,
+                    walletIdempotencyKey + REFUND_SUFFIX
+            );
             return new IllegalStateException(
                     MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE,
                     inventoryException
@@ -191,5 +208,18 @@ public class OrderCheckoutFacade {
             checkoutAuditLogger.logIdempotencyMismatch(idempotencyKey, raceWinnerOrder.getId());
             throw new IllegalStateException(MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH);
         }
+    }
+
+    private void ensureOrderId(Order order) {
+        if (isBlank(order.getId())) {
+            order.setId(UUID.randomUUID().toString());
+        }
+    }
+
+    private String resolveWalletIdempotencyKey(Order order, String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            return idempotencyKey;
+        }
+        return DEFAULT_WALLET_IDEMPOTENCY_PREFIX + order.getId();
     }
 }

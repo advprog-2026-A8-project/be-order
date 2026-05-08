@@ -15,18 +15,19 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
 public class WalletRestAdapter implements WalletGateway {
-    private static final String DESCRIPTION_PAYMENT = "Order payment";
-    private static final String DESCRIPTION_REFUND = "Order refund";
-    private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String ADAPTER_NAME = "Wallet";
-    private static final String PAY_PATH = "pay";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String CHECK_BALANCE_PATH = "check-balance";
+    private static final String DEDUCT_PATH = "deduct";
     private static final String REFUND_PATH = "refund";
+    private static final String ERROR_RETRY_EXHAUSTED = "Gagal mengakses Wallet contract service.";
+    private static final String ERROR_WALLET_INSUFFICIENT = "Saldo Wallet tidak mencukupi atau User tidak ditemukan!";
+    private static final String ERROR_WALLET_REFUND = "Gagal melakukan refund ke wallet.";
 
     private final RestTemplate restTemplate;
 
@@ -40,66 +41,105 @@ public class WalletRestAdapter implements WalletGateway {
     private String internalAuthorization;
 
     @Override
-    public void debit(String userId, double amount) {
+    public void ensureSufficientBalance(String userId, double amount) {
         UUID walletUserId = parseWalletUserId(userId);
         String authorizationToken = validateAndGetInternalAuthorization();
-        executeWalletMutation(
-                buildWalletUrl(PAY_PATH),
-                () -> buildWalletRequestWithAuthorization(
-                        walletUserId,
-                        amount,
-                        DESCRIPTION_PAYMENT,
-                        authorizationToken
-                ),
-                e -> new IllegalArgumentException("Saldo Wallet tidak mencukupi atau User tidak ditemukan!", e),
-                "Gagal mengakses Wallet service saat debit."
+        WalletContractResult result = callWalletContractWithRetry(() ->
+                restTemplate.postForObject(
+                        buildWalletUrl(CHECK_BALANCE_PATH),
+                        buildAuthorizedRequest(
+                                authorizationToken,
+                                Map.of("userId", walletUserId, "amount", amount)
+                        ),
+                        Map.class
+                )
         );
+        if (result == null || !result.success()) {
+            throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
+        }
     }
 
     @Override
-    public void refund(String userId, double amount) {
+    public void debit(String userId, String orderId, double amount, String idempotencyKey) {
         UUID walletUserId = parseWalletUserId(userId);
-        executeWalletMutation(
-                buildWalletUrl(REFUND_PATH),
-                () -> buildWalletRequest(walletUserId, amount, DESCRIPTION_REFUND),
-                e -> new IllegalStateException("Gagal melakukan refund ke wallet.", e),
-                "Gagal mengakses Wallet service saat refund."
+        String authorizationToken = validateAndGetInternalAuthorization();
+        WalletContractResult result = callWalletContractWithRetry(() ->
+                restTemplate.postForObject(
+                        buildWalletUrl(DEDUCT_PATH),
+                        buildAuthorizedRequest(
+                                authorizationToken,
+                                Map.of(
+                                        "userId", walletUserId,
+                                        "orderId", orderId,
+                                        "amount", amount,
+                                        "idempotencyKey", idempotencyKey
+                                )
+                        ),
+                        Map.class
+                )
         );
+        if (result == null || !result.success()) {
+            throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
+        }
     }
 
-    private HttpEntity<Map<String, Object>> buildWalletRequest(
-            UUID userId,
-            double amount,
-            String description
+    @Override
+    public void refund(String userId, String orderId, double amount, String idempotencyKey) {
+        UUID walletUserId = parseWalletUserId(userId);
+        String authorizationToken = validateAndGetInternalAuthorization();
+        WalletContractResult result = callWalletContractWithRetry(() ->
+                restTemplate.postForObject(
+                        buildWalletUrl(REFUND_PATH),
+                        buildAuthorizedRequest(
+                                authorizationToken,
+                                Map.of(
+                                        "userId", walletUserId,
+                                        "orderId", orderId,
+                                        "amount", amount,
+                                        "idempotencyKey", idempotencyKey
+                                )
+                        ),
+                        Map.class
+                )
+        );
+        if (result == null || !result.success()) {
+            throw new IllegalStateException(ERROR_WALLET_REFUND);
+        }
+    }
+
+    private WalletContractResult callWalletContractWithRetry(
+            Supplier<Map<String, Object>> requestSupplier
     ) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
+        ResourceAccessException lastTransientError = null;
 
-        Map<String, Object> payload = Map.of(
-                "userId", userId,
-                "amount", amount,
-                "description", description
-        );
-
-        return new HttpEntity<>(payload, headers);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                Map<String, Object> responseBody = requestSupplier.get();
+                WalletContractResult result = parseResult(responseBody);
+                if (result == null) {
+                    throw new IllegalStateException("Wallet contract response kosong.");
+                }
+                if (!result.success() && result.retryable()) {
+                    continue;
+                }
+                return result;
+            } catch (HttpClientErrorException ex) {
+                throw new IllegalArgumentException("Wallet contract request tidak valid.", ex);
+            } catch (ResourceAccessException ex) {
+                lastTransientError = ex;
+            }
+        }
+        throw new IllegalStateException(ERROR_RETRY_EXHAUSTED, lastTransientError);
     }
 
-    private HttpEntity<Map<String, Object>> buildWalletRequestWithAuthorization(
-            UUID userId,
-            double amount,
-            String description,
-            String authorizationToken
+    private HttpEntity<Map<String, Object>> buildAuthorizedRequest(
+            String authorizationToken,
+            Map<String, Object> payload
     ) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set(AUTHORIZATION_HEADER, authorizationToken);
-
-        Map<String, Object> payload = Map.of(
-                "userId", userId,
-                "amount", amount,
-                "description", description
-        );
-
         return new HttpEntity<>(payload, headers);
     }
 
@@ -111,35 +151,33 @@ public class WalletRestAdapter implements WalletGateway {
         }
     }
 
+    private String validateAndGetInternalAuthorization() {
+        return AdapterConfigValidator.validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
+    }
+
     private String buildWalletUrl(String pathSegment) {
         return UriComponentsBuilder.fromUriString(walletUrl)
                 .pathSegment(pathSegment)
                 .toUriString();
     }
 
-    private void executeWalletMutation(
-            String url,
-            Supplier<HttpEntity<Map<String, Object>>> requestSupplier,
-            Function<HttpClientErrorException, RuntimeException> httpExceptionMapper,
-            String transientFailureMessage
+    private record WalletContractResult(
+            boolean success,
+            Object updatedBalance,
+            String errorCode,
+            boolean retryable
     ) {
-        AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
-
-        ResourceAccessException lastTransientError = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                restTemplate.postForEntity(url, requestSupplier.get(), Void.class);
-                return;
-            } catch (HttpClientErrorException e) {
-                throw httpExceptionMapper.apply(e);
-            } catch (ResourceAccessException e) {
-                lastTransientError = e;
-            }
-        }
-        throw new IllegalStateException(transientFailureMessage, lastTransientError);
     }
 
-    private String validateAndGetInternalAuthorization() {
-        return AdapterConfigValidator.validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
+    private WalletContractResult parseResult(Map<String, Object> responseBody) {
+        if (responseBody == null) {
+            return null;
+        }
+        boolean success = Boolean.TRUE.equals(responseBody.get("success"));
+        boolean retryable = Boolean.TRUE.equals(responseBody.get("retryable"));
+        Object updatedBalance = responseBody.get("updatedBalance");
+        Object errorCodeObject = responseBody.get("errorCode");
+        String errorCode = errorCodeObject == null ? null : errorCodeObject.toString();
+        return new WalletContractResult(success, updatedBalance, errorCode, retryable);
     }
 }
