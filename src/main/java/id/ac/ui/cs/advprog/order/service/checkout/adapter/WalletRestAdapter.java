@@ -41,7 +41,7 @@ public class WalletRestAdapter implements WalletGateway {
                                 .build()
                 )
         );
-        if (response == null || !response.getSufficient()) {
+        if (!response.getSufficient()) {
             throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
         }
     }
@@ -88,30 +88,38 @@ public class WalletRestAdapter implements WalletGateway {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 T result = requestSupplier.get();
-                if (result == null) {
-                    throw new IllegalStateException(ERROR_EMPTY_RESPONSE);
-                }
-                boolean shouldRetryByContract = result instanceof WalletMutationResponse mutationResponse
-                        && !mutationResponse.getSuccess()
-                        && mutationResponse.getRetryable();
-                if (shouldRetryByContract) {
-                    if (attempt < maxAttempts) {
-                        continue;
-                    }
-                    break;
+                boolean shouldRetry = shouldRetryContractResponse(result, attempt);
+                if (shouldRetry) {
+                    continue;
                 }
                 return result;
             } catch (StatusRuntimeException ex) {
                 if (isInvalidRequestStatus(ex.getStatus())) {
                     throw new IllegalArgumentException(ERROR_REQUEST_INVALID, ex);
                 }
-                lastTransientError = ex;
                 if (!isRetryableStatus(ex.getStatus()) || attempt == maxAttempts) {
-                    break;
+                    throw new IllegalStateException(ERROR_RETRY_EXHAUSTED, ex);
                 }
+                lastTransientError = ex;
             }
         }
         throw new IllegalStateException(ERROR_RETRY_EXHAUSTED, lastTransientError);
+    }
+
+    private boolean shouldRetryContractResponse(Object result, int attempt) {
+        if (result == null) {
+            throw new IllegalStateException(ERROR_EMPTY_RESPONSE);
+        }
+        if (!(result instanceof WalletMutationResponse mutationResponse)) {
+            return false;
+        }
+        if (!mutationResponse.getSuccess() && mutationResponse.getRetryable()) {
+            if (attempt == maxAttempts) {
+                throw new IllegalStateException(ERROR_RETRY_EXHAUSTED);
+            }
+            return true;
+        }
+        return false;
     }
 
     private UUID parseWalletUserId(String userId) {
