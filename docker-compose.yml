@@ -37,6 +37,9 @@ services:
       ORDER_INVENTORY_URL: ${ORDER_INVENTORY_URL:-http://host.docker.internal:4002/api/products}
       ORDER_WALLET_URL: ${ORDER_WALLET_URL:-http://host.docker.internal:6002/api/contracts/wallet}
       ORDER_WALLET_INTERNAL_AUTHORIZATION: ${ORDER_WALLET_INTERNAL_AUTHORIZATION:-Bearer internal-order-service}
+      ORDER_WALLET_GRPC_HOST: ${ORDER_WALLET_GRPC_HOST:-host.docker.internal}
+      ORDER_WALLET_GRPC_PORT: ${ORDER_WALLET_GRPC_PORT:-9090}
+      GRPC_SERVER_INTERNAL_TOKEN: ${GRPC_SERVER_INTERNAL_TOKEN}
       ORDER_VOUCHER_URL: ${ORDER_VOUCHER_URL:-http://host.docker.internal:7002/api/vouchers}
       ORDER_PROFILE_URL: ${ORDER_PROFILE_URL:-http://host.docker.internal:3002/api/profile}
       ORDER_PROFILE_INTERNAL_AUTHORIZATION: ${ORDER_PROFILE_INTERNAL_AUTHORIZATION:-Bearer internal-order-service}
@@ -81,6 +84,9 @@ services:
       ORDER_INVENTORY_URL: ${ORDER_INVENTORY_URL:-http://host.docker.internal:4002/api/products}
       ORDER_WALLET_URL: ${ORDER_WALLET_URL:-http://host.docker.internal:6002/api/contracts/wallet}
       ORDER_WALLET_INTERNAL_AUTHORIZATION: ${ORDER_WALLET_INTERNAL_AUTHORIZATION:-Bearer internal-order-service}
+      ORDER_WALLET_GRPC_HOST: ${ORDER_WALLET_GRPC_HOST:-host.docker.internal}
+      ORDER_WALLET_GRPC_PORT: ${ORDER_WALLET_GRPC_PORT:-9090}
+      GRPC_SERVER_INTERNAL_TOKEN: ${GRPC_SERVER_INTERNAL_TOKEN}
       ORDER_VOUCHER_URL: ${ORDER_VOUCHER_URL:-http://host.docker.internal:7002/api/vouchers}
       ORDER_PROFILE_URL: ${ORDER_PROFILE_URL:-http://host.docker.internal:3002/api/profile}
       ORDER_PROFILE_INTERNAL_AUTHORIZATION: ${ORDER_PROFILE_INTERNAL_AUTHORIZATION:-Bearer internal-order-service}

@@ -2,149 +2,113 @@ package id.ac.ui.cs.advprog.order.service.checkout.adapter;
 
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.common.AdapterConfigValidator;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.CheckBalanceRequest;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.CheckBalanceResponse;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.DeductBalanceRequest;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.RefundBalanceRequest;
+import id.ac.ui.cs.advprog.bewallettransaksi.grpc.WalletMutationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 
-import java.util.Map;
+import java.math.BigDecimal;
 import java.util.UUID;
-import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
 public class WalletRestAdapter implements WalletGateway {
-    private static final String ADAPTER_NAME = "Wallet";
-    private static final String AUTHORIZATION_HEADER = "Authorization";
-    private static final String CHECK_BALANCE_PATH = "check-balance";
-    private static final String DEDUCT_PATH = "deduct";
-    private static final String REFUND_PATH = "refund";
-    private static final String ERROR_RETRY_EXHAUSTED = "Gagal mengakses Wallet contract service.";
+    private static final String ERROR_RETRY_EXHAUSTED = "Gagal mengakses Wallet gRPC contract service.";
     private static final String ERROR_WALLET_INSUFFICIENT = "Saldo Wallet tidak mencukupi atau User tidak ditemukan!";
     private static final String ERROR_WALLET_REFUND = "Gagal melakukan refund ke wallet.";
-    private static final String PAYLOAD_USER_ID = "userId";
-    private static final String PAYLOAD_AMOUNT = "amount";
-    private static final String PAYLOAD_ORDER_ID = "orderId";
-    private static final String PAYLOAD_IDEMPOTENCY_KEY = "idempotencyKey";
+    private static final String ERROR_REQUEST_INVALID = "Wallet contract request tidak valid.";
+    private static final String ERROR_EMPTY_RESPONSE = "Wallet contract response kosong.";
 
-    private final RestTemplate restTemplate;
-
-    @Value("${order.wallet.url}")
-    private String walletUrl;
+    private final WalletGrpcStubFactory walletGrpcStubFactory;
 
     @Value("${order.http.retry.max-attempts:2}")
     private int maxAttempts;
 
-    @Value("${order.wallet.internal-authorization:Bearer internal-order-service}")
-    private String internalAuthorization;
-
     @Override
     public void ensureSufficientBalance(String userId, double amount) {
-        UUID walletUserId = parseWalletUserId(userId);
-        String authorizationToken = validateAndGetInternalAuthorization();
-        WalletContractResult result = callWalletContractWithRetry(() ->
-                restTemplate.postForObject(
-                        buildWalletUrl(CHECK_BALANCE_PATH),
-                        buildAuthorizedRequest(
-                                authorizationToken,
-                                Map.of(PAYLOAD_USER_ID, walletUserId, PAYLOAD_AMOUNT, amount)
-                        ),
-                        Map.class
+        UUID walletUserId = parseWalletUserId(userId); // Keep UUID validation parity with existing flow
+        CheckBalanceResponse response = callGrpcWithRetry(() ->
+                walletGrpcStubFactory.createStub().checkBalance(
+                        CheckBalanceRequest.newBuilder()
+                                .setUserId(walletUserId.toString())
+                                .setAmount(toMoneyString(amount))
+                                .build()
                 )
         );
-        if (!result.success()) {
+        if (response == null || !response.getSufficient()) {
             throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
         }
     }
 
     @Override
     public void debit(String userId, String orderId, double amount, String idempotencyKey) {
-        UUID walletUserId = parseWalletUserId(userId);
-        String authorizationToken = validateAndGetInternalAuthorization();
-        WalletContractResult result = callWalletContractWithRetry(() ->
-                restTemplate.postForObject(
-                        buildWalletUrl(DEDUCT_PATH),
-                        buildAuthorizedRequest(
-                                authorizationToken,
-                                Map.of(
-                                        PAYLOAD_USER_ID, walletUserId,
-                                        PAYLOAD_ORDER_ID, orderId,
-                                        PAYLOAD_AMOUNT, amount,
-                                        PAYLOAD_IDEMPOTENCY_KEY, idempotencyKey
-                                )
-                        ),
-                        Map.class
+        UUID walletUserId = parseWalletUserId(userId); // Keep UUID validation parity with existing flow
+        WalletMutationResponse result = callGrpcWithRetry(() ->
+                walletGrpcStubFactory.createStub().deductBalance(
+                        DeductBalanceRequest.newBuilder()
+                                .setUserId(walletUserId.toString())
+                                .setOrderId(orderId)
+                                .setAmount(toMoneyString(amount))
+                                .setIdempotencyKey(idempotencyKey)
+                                .build()
                 )
         );
-        if (!result.success()) {
+        if (!result.getSuccess()) {
             throw new IllegalArgumentException(ERROR_WALLET_INSUFFICIENT);
         }
     }
 
     @Override
     public void refund(String userId, String orderId, double amount, String idempotencyKey) {
-        UUID walletUserId = parseWalletUserId(userId);
-        String authorizationToken = validateAndGetInternalAuthorization();
-        WalletContractResult result = callWalletContractWithRetry(() ->
-                restTemplate.postForObject(
-                        buildWalletUrl(REFUND_PATH),
-                        buildAuthorizedRequest(
-                                authorizationToken,
-                                Map.of(
-                                        PAYLOAD_USER_ID, walletUserId,
-                                        PAYLOAD_ORDER_ID, orderId,
-                                        PAYLOAD_AMOUNT, amount,
-                                        PAYLOAD_IDEMPOTENCY_KEY, idempotencyKey
-                                )
-                        ),
-                        Map.class
+        UUID walletUserId = parseWalletUserId(userId); // Keep UUID validation parity with existing flow
+        WalletMutationResponse result = callGrpcWithRetry(() ->
+                walletGrpcStubFactory.createStub().refundBalance(
+                        RefundBalanceRequest.newBuilder()
+                                .setUserId(walletUserId.toString())
+                                .setOrderId(orderId)
+                                .setAmount(toMoneyString(amount))
+                                .setIdempotencyKey(idempotencyKey)
+                                .build()
                 )
         );
-        if (!result.success()) {
+        if (!result.getSuccess()) {
             throw new IllegalStateException(ERROR_WALLET_REFUND);
         }
     }
 
-    private WalletContractResult callWalletContractWithRetry(
-            Supplier<Map<String, Object>> requestSupplier
-    ) {
+    private <T> T callGrpcWithRetry(GrpcSupplier<T> requestSupplier) {
         AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
-        ResourceAccessException lastTransientError = null;
-
+        RuntimeException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                Map<String, Object> responseBody = requestSupplier.get();
-                WalletContractResult result = parseResult(responseBody);
+                T result = requestSupplier.get();
                 if (result == null) {
-                    throw new IllegalStateException("Wallet contract response kosong.");
+                    throw new IllegalStateException(ERROR_EMPTY_RESPONSE);
                 }
-                if (!result.success() && result.retryable()) {
+                if (result instanceof WalletMutationResponse mutationResponse
+                        && !mutationResponse.getSuccess()
+                        && mutationResponse.getRetryable()) {
                     continue;
                 }
                 return result;
-            } catch (HttpClientErrorException ex) {
-                throw new IllegalArgumentException("Wallet contract request tidak valid.", ex);
-            } catch (ResourceAccessException ex) {
+            } catch (StatusRuntimeException ex) {
+                if (isRetryableStatus(ex.getStatus()) && attempt < maxAttempts) {
+                    lastTransientError = ex;
+                    continue;
+                }
+                if (isInvalidRequestStatus(ex.getStatus())) {
+                    throw new IllegalArgumentException(ERROR_REQUEST_INVALID, ex);
+                }
                 lastTransientError = ex;
             }
         }
         throw new IllegalStateException(ERROR_RETRY_EXHAUSTED, lastTransientError);
-    }
-
-    private HttpEntity<Map<String, Object>> buildAuthorizedRequest(
-            String authorizationToken,
-            Map<String, Object> payload
-    ) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(AUTHORIZATION_HEADER, authorizationToken);
-        return new HttpEntity<>(payload, headers);
     }
 
     private UUID parseWalletUserId(String userId) {
@@ -155,33 +119,27 @@ public class WalletRestAdapter implements WalletGateway {
         }
     }
 
-    private String validateAndGetInternalAuthorization() {
-        return AdapterConfigValidator.validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
+    private String toMoneyString(double amount) {
+        return BigDecimal.valueOf(amount).stripTrailingZeros().toPlainString();
     }
 
-    private String buildWalletUrl(String pathSegment) {
-        return UriComponentsBuilder.fromUriString(walletUrl)
-                .pathSegment(pathSegment)
-                .toUriString();
+    private boolean isRetryableStatus(Status status) {
+        Status.Code code = status.getCode();
+        return code == Status.Code.UNAVAILABLE
+                || code == Status.Code.DEADLINE_EXCEEDED
+                || code == Status.Code.INTERNAL
+                || code == Status.Code.UNKNOWN;
     }
 
-    private record WalletContractResult(
-            boolean success,
-            Object updatedBalance,
-            String errorCode,
-            boolean retryable
-    ) {
+    private boolean isInvalidRequestStatus(Status status) {
+        Status.Code code = status.getCode();
+        return code == Status.Code.INVALID_ARGUMENT
+                || code == Status.Code.UNAUTHENTICATED
+                || code == Status.Code.PERMISSION_DENIED;
     }
 
-    private WalletContractResult parseResult(Map<String, Object> responseBody) {
-        if (responseBody == null) {
-            return null;
-        }
-        boolean success = Boolean.TRUE.equals(responseBody.get("success"));
-        boolean retryable = Boolean.TRUE.equals(responseBody.get("retryable"));
-        Object updatedBalance = responseBody.get("updatedBalance");
-        Object errorCodeObject = responseBody.get("errorCode");
-        String errorCode = errorCodeObject == null ? null : errorCodeObject.toString();
-        return new WalletContractResult(success, updatedBalance, errorCode, retryable);
+    @FunctionalInterface
+    private interface GrpcSupplier<T> {
+        T get();
     }
 }

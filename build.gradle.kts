@@ -5,6 +5,7 @@ plugins {
     id("org.springframework.boot") version "3.5.10"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.sonarqube") version "4.4.1.3373"
+    id("com.google.protobuf") version "0.9.4"
 }
 
 group = "id.ac.ui.cs.advprog"
@@ -12,10 +13,23 @@ version = "0.0.1-SNAPSHOT"
 description = "be-order"
 
 val springdocVersion = "2.8.9"
+val grpcVersion = "1.68.1"
+val protobufVersion = "3.25.5"
+val grpcPluginVersion = "1.68.1"
+val tomcatAnnotationsVersion = "6.0.53"
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+sourceSets {
+    named("main") {
+        java {
+            srcDir("build/generated/source/proto/main/java")
+            srcDir("build/generated/source/proto/main/grpc")
+        }
     }
 }
 
@@ -49,7 +63,29 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
+    implementation("io.grpc:grpc-protobuf:$grpcVersion")
+    implementation("io.grpc:grpc-stub:$grpcVersion")
+    compileOnly("org.apache.tomcat:annotations-api:$tomcatAnnotationsVersion")
     runtimeOnly("com.h2database:h2")
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protobufVersion"
+    }
+    plugins {
+        create("grpc") {
+            artifact = "io.grpc:protoc-gen-grpc-java:$grpcPluginVersion"
+        }
+    }
+    generateProtoTasks {
+        all().configureEach {
+            plugins {
+                create("grpc")
+            }
+        }
+    }
 }
 
 tasks.test {
@@ -88,4 +124,12 @@ tasks.withType<Checkstyle> {
         xml.required.set(false)
         html.required.set(true)
     }
+}
+
+tasks.named<Checkstyle>("checkstyleMain") {
+    source = fileTree("src/main/java")
+}
+
+tasks.named<Checkstyle>("checkstyleTest") {
+    source = fileTree("src/test/java")
 }
