@@ -58,6 +58,20 @@ class VoucherRestAdapterTest {
     }
 
     @Test
+    void validateDiscountShouldThrowWhenResponseNull() {
+        when(restTemplate.postForObject(anyString(), any(), eq(Map.class))).thenReturn(null);
+        assertThrows(IllegalArgumentException.class, () -> adapter.validateDiscount("ANY", 10000.0));
+    }
+
+    @Test
+    void validateDiscountShouldThrowWhenDiscountAmountNotNumber() {
+        when(restTemplate.postForObject(anyString(), any(), eq(Map.class)))
+                .thenReturn(Map.of("valid", true, "discountAmount", "x"));
+
+        assertThrows(IllegalStateException.class, () -> adapter.validateDiscount("ANY", 10000.0));
+    }
+
+    @Test
     void validateDiscountShouldRetryOnTransientFailure() {
         when(restTemplate.postForObject(anyString(), any(), eq(Map.class)))
                 .thenThrow(new ResourceAccessException("timeout-1"))
@@ -94,5 +108,11 @@ class VoucherRestAdapterTest {
                 .when(restTemplate).postForObject(anyString(), any(), eq(Map.class));
 
         assertThrows(IllegalArgumentException.class, () -> adapter.useVoucher("BAD"));
+    }
+
+    @Test
+    void validateDiscountShouldThrowWhenMaxAttemptsNotPositive() {
+        ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
+        assertThrows(IllegalStateException.class, () -> adapter.validateDiscount("HEMAT10", 10000.0));
     }
 }

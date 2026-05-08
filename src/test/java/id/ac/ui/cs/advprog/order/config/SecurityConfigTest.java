@@ -9,10 +9,13 @@ import id.ac.ui.cs.advprog.order.security.RestAuthenticationEntryPoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SecurityConfigTest {
@@ -46,6 +49,33 @@ class SecurityConfigTest {
                 .collect(Collectors.toSet());
 
         assertTrue(authorities.contains("ROLE_JASTIPER"));
+    }
+
+    @Test
+    void jwtConverterShouldReturnEmptyAuthoritiesWhenNoRoleClaims() {
+        Jwt jwt = buildJwt(Map.of("sub", "user-1"));
+        AbstractAuthenticationToken token = securityConfig.jwtAuthenticationConverter().convert(jwt);
+        assertEquals(0, token.getAuthorities().size());
+    }
+
+    @Test
+    void jwtConverterShouldNormalizeAndDeduplicateAuthorities() {
+        Jwt jwt = buildJwt(Map.of(
+                "roles", List.of("ADMIN", "ROLE_ADMIN", "  TITIPER  "),
+                "role", "ROLE_TITIPER"
+        ));
+
+        AbstractAuthenticationToken token = securityConfig.jwtAuthenticationConverter().convert(jwt);
+        Set<String> authorities = token.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("ROLE_ADMIN", "ROLE_TITIPER"), authorities);
+    }
+
+    @Test
+    void jwtDecoderShouldBeCreated() {
+        assertNotNull(securityConfig.jwtDecoder("0123456789abcdef0123456789abcdef"));
     }
 
     private Jwt buildJwt(Map<String, Object> claims) {

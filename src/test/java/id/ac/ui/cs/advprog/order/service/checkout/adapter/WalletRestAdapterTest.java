@@ -140,4 +140,75 @@ class WalletRestAdapterTest {
         adapter.refund("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-r1");
         verify(stub, times(2)).refundBalance(any());
     }
+
+    @Test
+    void debitShouldThrowWhenContractReturnsNonRetryableFailure() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(false).build());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
+    }
+
+    @Test
+    void refundShouldThrowWhenContractReturnsNonRetryableFailure() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.refundBalance(any()))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(false).setRetryable(false).build());
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.refund("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-r1"));
+    }
+
+    @Test
+    void ensureSufficientBalanceShouldThrowWhenResponseNull() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.checkBalance(any())).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.ensureSufficientBalance("00000000-0000-0000-0000-000000000001", 10000.0));
+    }
+
+    @Test
+    void debitShouldThrowOnUnauthenticatedStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.UNAUTHENTICATED));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
+    }
+
+    @Test
+    void debitShouldThrowOnPermissionDeniedStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.PERMISSION_DENIED));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
+    }
+
+    @Test
+    void debitShouldRetryOnDeadlineExceededStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.DEADLINE_EXCEEDED))
+                .thenReturn(WalletMutationResponse.newBuilder().setSuccess(true).build());
+
+        adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1");
+        verify(stub, times(2)).deductBalance(any());
+    }
+
+    @Test
+    void debitShouldThrowRetryExhaustedOnUnknownStatus() {
+        when(walletGrpcStubFactory.createStub()).thenReturn(stub);
+        when(stub.deductBalance(any()))
+                .thenThrow(new StatusRuntimeException(Status.UNKNOWN))
+                .thenThrow(new StatusRuntimeException(Status.UNKNOWN));
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.debit("00000000-0000-0000-0000-000000000001", "order-1", 10000.0, "idem-1"));
+    }
 }
