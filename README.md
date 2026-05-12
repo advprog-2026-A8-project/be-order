@@ -14,7 +14,8 @@
 
 ## Risk Analysis & Architecture Modification
 
-![]()
+![alt text](assets/RiskStormingMatrix.png)
+![alt text](assets/ModifiedArchitectureDiagram.png)
 
 # Individu (Derrick)
 
