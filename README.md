@@ -1,4 +1,41 @@
-﻿# BE Order
+﻿# C4 Model of the Current Architecture
+
+## Context Diagram
+
+![alt text](assets/ContextDiagram.png)
+
+## Container Diagram
+
+![alt text](assets/ContainerDiagram.png)
+
+## Deployment Diagram
+
+![alt text](assets/DeploymentDiagram.png)
+
+## Risk Analysis & Architecture Modification
+
+![]()
+
+# Individu (Derrick)
+
+## Code Diagram
+
+![]()
+
+## Profiling
+
+![]()
+
+![]()
+
+## Monitoring
+
+![]()
+
+![]()
+
+
+# BE Order
 PIC: Derrick - 2406351440
 
 Backend service untuk orkestrasi transaksi order pada sistem JaStip Online Nasional (JSON): checkout, lifecycle status order, cancel + refund trigger, rating submission, history/monitoring, serta integrasi lintas service (inventory, wallet, voucher, profile).
