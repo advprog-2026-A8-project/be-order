@@ -26,10 +26,13 @@ Teknik ini membantu tim mengidentifikasi risiko secara sistematis berdasarkan ke
 Risk Storming juga bermanfaat karena menghubungkan diskusi arsitektur dengan keputusan desain yang konkret. Hasil akhirnya bukan hanya daftar risiko, tetapi juga usulan future architecture yang lebih jelas, termasuk penambahan API Gateway, reservation cache untuk kontrol flash sale, event bus untuk menjaga konsistensi berbasis saga, serta dukungan observability dan audit yang lebih kuat.
 
 # Individu (Derrick)
+## Component Diagram
+
+![alt text](assets/ComponentDiagram.png)
 
 ## Code Diagram
 
-![]()
+![alt text](assets/CodeDiagram.png)
 
 ## Profiling
 
