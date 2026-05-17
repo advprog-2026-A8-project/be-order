@@ -4,5 +4,6 @@ import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 
 public interface InventoryGateway {
     InventoryResponse getProduct(String productId);
-    void reduceStock(String productId, int quantity);
+    void reserveStock(String productId, int quantity);
+    void releaseStock(String productId, int quantity);
 }

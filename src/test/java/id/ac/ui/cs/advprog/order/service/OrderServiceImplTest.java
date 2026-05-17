@@ -5,7 +5,9 @@ import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
+import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +49,12 @@ class OrderServiceImplTest {
 
     @Mock
     private WalletGateway walletGateway;
+
+    @Mock
+    private InventoryGateway inventoryGateway;
+
+    @Mock
+    private VoucherGateway voucherGateway;
 
     @Mock
     private ProfileGateway profileGateway;
@@ -136,6 +144,8 @@ class OrderServiceImplTest {
     void testCancelOrderByJastiperSuccess() {
         order.setStatus(OrderStatus.PAID);
         order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
         order.setTotalAmount(10000.0);
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
@@ -145,6 +155,7 @@ class OrderServiceImplTest {
 
         assertEquals(OrderStatus.CANCELLED, result.getStatus());
         verify(walletGateway).refund(eq("u1"), eq("order-1"), eq(10000.0), anyString());
+        verify(inventoryGateway).releaseStock("p1", 1);
     }
 
     @Test
@@ -169,6 +180,8 @@ class OrderServiceImplTest {
     void testCancelOrderByJastiperShouldRefundZeroWhenTotalAmountNull() {
         order.setStatus(OrderStatus.PAID);
         order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
         order.setTotalAmount(null);
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
@@ -176,6 +189,7 @@ class OrderServiceImplTest {
 
         orderService.cancelOrderByJastiper("order-1", "jastiper-1");
         verify(walletGateway).refund(eq("u1"), eq("order-1"), eq(0.0), anyString());
+        verify(inventoryGateway).releaseStock("p1", 1);
     }
 
     @Test
@@ -187,6 +201,42 @@ class OrderServiceImplTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.cancelOrderByJastiper("order-1", "jastiper-2"));
+    }
+
+    @Test
+    void testCancelOrderByJastiperShouldRestoreVoucherWhenVoucherUsed() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
+        order.setVoucherCode("HEMAT10");
+        order.setVoucherApplied(true);
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        orderService.cancelOrderByJastiper("order-1", "jastiper-1");
+
+        verify(voucherGateway).restoreVoucher("HEMAT10");
+    }
+
+    @Test
+    void testCancelOrderByJastiperShouldNotRestoreVoucherWhenNotApplied() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
+        order.setVoucherCode("HEMAT10");
+        order.setVoucherApplied(false);
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        orderService.cancelOrderByJastiper("order-1", "jastiper-1");
+
+        verify(voucherGateway, never()).restoreVoucher(anyString());
     }
 
     @Test
@@ -238,7 +288,7 @@ class OrderServiceImplTest {
     void testSubmitRatingSuccess() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
-        order.setJastiperId("10");
+        order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
 
@@ -299,7 +349,7 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void testSubmitRatingShouldFailWhenJastiperIdNonNumeric() {
+    void testSubmitRatingShouldFailWhenJastiperIdNonUuid() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
         order.setJastiperId("jastiper-x");

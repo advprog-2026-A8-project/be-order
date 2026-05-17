@@ -17,6 +17,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -82,7 +83,7 @@ class OrderCheckoutFacadeTest {
         assertEquals(OrderStatus.PAID, result.getStatus());
         verify(walletGateway).ensureSufficientBalance("u1", 10000.0);
         verify(walletGateway).debit(anyString(), anyString(), anyDouble(), anyString());
-        verify(inventoryGateway).reduceStock("p1", 2);
+        verify(inventoryGateway).reserveStock("p1", 2);
         verify(checkoutAuditLogger).logCheckoutStarted(order, null);
         verify(checkoutAuditLogger).logDebitSucceeded("u1", 10000.0);
         verify(checkoutAuditLogger).logStockReductionSucceeded("p1", 2);
@@ -101,6 +102,7 @@ class OrderCheckoutFacadeTest {
         Order result = checkoutFacade.checkout(order);
 
         assertEquals(8500.0, result.getTotalAmount());
+        assertTrue(Boolean.TRUE.equals(result.getVoucherApplied()));
         verify(walletGateway).ensureSufficientBalance("u1", 8500.0);
         verify(walletGateway).debit(anyString(), anyString(), eq(8500.0), anyString());
         verify(voucherGateway).useVoucher("HEMAT10");
@@ -132,6 +134,7 @@ class OrderCheckoutFacadeTest {
 
         assertEquals(OrderStatus.PAID, result.getStatus());
         assertEquals(9000.0, result.getTotalAmount());
+        assertFalse(Boolean.TRUE.equals(result.getVoucherApplied()));
         verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VOUCHER_USE_FAILED_AFTER_CHECKOUT);
     }
 
@@ -217,7 +220,7 @@ class OrderCheckoutFacadeTest {
                 .when(walletGateway).ensureSufficientBalance("u1", 10000.0);
 
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
-        verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
+        verify(inventoryGateway, never()).reserveStock(any(), any(Integer.class));
         verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_WALLET_DEBIT_FAILED);
     }
 
@@ -225,7 +228,7 @@ class OrderCheckoutFacadeTest {
     void checkoutShouldRefundWhenStockReductionFailsAfterDebit() {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
-        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reduceStock("p1", 2);
+        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reserveStock("p1", 2);
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
@@ -236,7 +239,7 @@ class OrderCheckoutFacadeTest {
     void checkoutShouldWrapWhenRefundAlsoFailsAfterStockReductionFailure() {
         when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
-        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reduceStock("p1", 2);
+        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reserveStock("p1", 2);
         doThrow(new IllegalStateException("refund down"))
                 .when(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
 
@@ -254,6 +257,42 @@ class OrderCheckoutFacadeTest {
                 10000.0,
                 CheckoutAuditReason.REFUND_COMPENSATION_FAILED
         );
+    }
+
+    @Test
+    void checkoutShouldCompensateRefundAndReleaseWhenSaveFailsAfterReserve() {
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+
+        verify(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
+        verify(inventoryGateway).releaseStock("p1", 2);
+    }
+
+    @Test
+    void checkoutShouldThrowWhenSaveFailsAndReleaseAlsoFails() {
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
+        doThrow(new IllegalStateException("release failed")).when(inventoryGateway).releaseStock("p1", 2);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+        assertTrue(ex.getMessage().contains("Kompensasi"));
+    }
+
+    @Test
+    void checkoutShouldRestoreVoucherWhenSaveFailsAfterVoucherApplied() {
+        order.setVoucherCode("HEMAT10");
+        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1000.0);
+        doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+        verify(voucherGateway).useVoucher("HEMAT10");
+        verify(voucherGateway).restoreVoucher("HEMAT10");
     }
 
     @Test
@@ -293,7 +332,7 @@ class OrderCheckoutFacadeTest {
 
         assertEquals("order-100", result.getId());
         verify(walletGateway, never()).debit(anyString(), anyString(), anyDouble(), anyString());
-        verify(inventoryGateway, never()).reduceStock(any(), any(Integer.class));
+        verify(inventoryGateway, never()).reserveStock(any(), any(Integer.class));
         verify(orderRepository, times(0)).save(any(Order.class));
         verify(checkoutAuditLogger).logIdempotencyHit("idem-1", "order-100");
     }

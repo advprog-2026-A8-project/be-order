@@ -78,6 +78,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('JASTIPER') and @orderAccessGuard.canUpdateStatus(authentication, #id))")
     public ResponseEntity<Order> updateOrderStatus(@PathVariable String id, @RequestParam String status) {
         Order updatedOrder = orderService.updateOrderStatus(id, status);
         return toOrderResponse(updatedOrder);

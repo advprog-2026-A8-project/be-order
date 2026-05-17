@@ -7,7 +7,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -19,16 +22,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class InventoryRestAdapterTest {
@@ -43,6 +45,8 @@ class InventoryRestAdapterTest {
     void setUp() {
         ReflectionTestUtils.setField(adapter, "inventoryUrl", "http://localhost:8081/api/products");
         ReflectionTestUtils.setField(adapter, "maxAttempts", 2);
+        ReflectionTestUtils.setField(adapter, "inventoryInternalRole", "ADMIN");
+        ReflectionTestUtils.setField(adapter, "inventoryInternalUserId", "order-service");
     }
 
     @Test
@@ -52,7 +56,6 @@ class InventoryRestAdapterTest {
         when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class))).thenReturn(response);
 
         InventoryResponse result = adapter.getProduct("p1");
-
         assertEquals("p1", result.getProductId());
     }
 
@@ -65,53 +68,40 @@ class InventoryRestAdapterTest {
     }
 
     @Test
-    void getProductShouldRetryOnTransientFailure() {
-        InventoryResponse response = new InventoryResponse();
-        response.setProductId("p1");
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
-                .thenThrow(new ResourceAccessException("timeout"))
-                .thenReturn(response);
-
-        InventoryResponse result = adapter.getProduct("p1");
-
-        assertEquals("p1", result.getProductId());
-        verify(restTemplate, times(2)).getForObject(anyString(), eq(InventoryResponse.class));
+    void reserveStockSuccess() {
+        adapter.reserveStock("p1", 2);
+        verify(restTemplate).postForObject("http://localhost:8081/api/products/p1/reserve?quantity=2", null, String.class);
     }
 
     @Test
-    void getProductShouldThrowWhenTransientFailureExhausted() {
-        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+    void reserveStockShouldThrowWhenInsufficient() {
+        when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
+                .thenThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST));
+
+        assertThrows(IllegalStateException.class, () -> adapter.reserveStock("p1", 2));
+    }
+
+    @Test
+    void reserveStockShouldRetryOnTransientFailure() {
+        when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
+                .thenThrow(new ResourceAccessException("timeout-1"))
+                .thenReturn("ok");
+
+        adapter.reserveStock("p1", 2);
+        verify(restTemplate, times(2)).postForObject(anyString(), any(), eq(String.class));
+    }
+
+    @Test
+    void reserveStockShouldThrowWhenTransientFailureExhausted() {
+        when(restTemplate.postForObject(anyString(), any(), eq(String.class)))
                 .thenThrow(new ResourceAccessException("timeout-1"))
                 .thenThrow(new ResourceAccessException("timeout-2"));
 
-        assertThrows(IllegalStateException.class, () -> adapter.getProduct("p1"));
+        assertThrows(IllegalStateException.class, () -> adapter.reserveStock("p1", 2));
     }
 
     @Test
-    void reduceStockSuccess() {
-        InventoryResponse product = new InventoryResponse();
-        product.setProductId("p1");
-        product.setProductName("Produk A");
-        product.setPrice(20000.0);
-        product.setProductQuantity(10);
-
-        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
-                .thenReturn(product);
-
-        adapter.reduceStock("p1", 2);
-
-        inOrder(restTemplate).verify(restTemplate).getForObject(
-                "http://localhost:8081/api/products/p1",
-                InventoryResponse.class
-        );
-        inOrder(restTemplate).verify(restTemplate).put(
-                eq("http://localhost:8081/api/products/update/p1"),
-                argThat(Objects::nonNull)
-        );
-    }
-
-    @Test
-    void reduceStockShouldPreserveInventoryContractFields() {
+    void releaseStockSuccessShouldPutUpdatedPayload() {
         InventoryResponse product = new InventoryResponse();
         product.setProductId("p1");
         product.setProductName("Produk A");
@@ -123,39 +113,30 @@ class InventoryRestAdapterTest {
         when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
                 .thenReturn(product);
 
-        AtomicReference<Object> bodyRef = new AtomicReference<>();
+        AtomicReference<HttpEntity<?>> requestRef = new AtomicReference<>();
         doAnswer(invocation -> {
-            bodyRef.set(invocation.getArgument(1));
-            return null;
-        }).when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), any());
+            requestRef.set(invocation.getArgument(2));
+            return ResponseEntity.ok().build();
+        }).when(restTemplate).exchange(
+                eq("http://localhost:8081/api/products/update/p1"),
+                eq(HttpMethod.PUT),
+                any(HttpEntity.class),
+                eq(Void.class)
+        );
 
-        adapter.reduceStock("p1", 2);
+        adapter.releaseStock("p1", 2);
 
         @SuppressWarnings("unchecked")
-        var payload = (java.util.Map<String, Object>) bodyRef.get();
+        var payload = (java.util.Map<String, Object>) requestRef.get().getBody();
+        assertEquals(12, payload.get("stock"));
         assertEquals("Desk A", payload.get("description"));
         assertEquals("j-1", payload.get("jastiperId"));
+        assertEquals("ADMIN", requestRef.get().getHeaders().getFirst("X-User-Role"));
+        assertEquals("order-service", requestRef.get().getHeaders().getFirst("X-User-Id"));
     }
 
     @Test
-    void reduceStockFailureShouldThrow() {
-        InventoryResponse product = new InventoryResponse();
-        product.setProductId("p1");
-        product.setProductName("Produk A");
-        product.setPrice(20000.0);
-        product.setProductQuantity(10);
-
-        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
-                .thenReturn(product);
-
-        doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
-                .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(Objects::nonNull));
-
-        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
-    }
-
-    @Test
-    void reduceStockShouldRetryOnTransientFailure() {
+    void releaseStockShouldRetryOnTransientFailure() {
         InventoryResponse product = new InventoryResponse();
         product.setProductId("p1");
         product.setProductName("Produk A");
@@ -165,16 +146,25 @@ class InventoryRestAdapterTest {
                 .thenReturn(product);
 
         doThrow(new ResourceAccessException("timeout"))
-                .doNothing()
-                .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(Objects::nonNull));
+                .doReturn(ResponseEntity.ok().build())
+                .when(restTemplate).exchange(
+                        eq("http://localhost:8081/api/products/update/p1"),
+                        eq(HttpMethod.PUT),
+                        argThat(Objects::nonNull),
+                        eq(Void.class)
+                );
 
-        adapter.reduceStock("p1", 2);
-
-        verify(restTemplate, times(2)).put(eq("http://localhost:8081/api/products/update/p1"), argThat(Objects::nonNull));
+        adapter.releaseStock("p1", 2);
+        verify(restTemplate, times(2)).exchange(
+                eq("http://localhost:8081/api/products/update/p1"),
+                eq(HttpMethod.PUT),
+                argThat(Objects::nonNull),
+                eq(Void.class)
+        );
     }
 
     @Test
-    void reduceStockShouldThrowWhenTransientFailureExhausted() {
+    void releaseStockShouldThrowWhenUpdateClientError() {
         InventoryResponse product = new InventoryResponse();
         product.setProductId("p1");
         product.setProductName("Produk A");
@@ -183,37 +173,15 @@ class InventoryRestAdapterTest {
         when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
                 .thenReturn(product);
 
-        doThrow(new ResourceAccessException("timeout-1"))
-                .doThrow(new ResourceAccessException("timeout-2"))
-                .when(restTemplate).put(eq("http://localhost:8081/api/products/update/p1"), argThat(Objects::nonNull));
+        doThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST))
+                .when(restTemplate).exchange(
+                        eq("http://localhost:8081/api/products/update/p1"),
+                        eq(HttpMethod.PUT),
+                        argThat(Objects::nonNull),
+                        eq(Void.class)
+                );
 
-        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
-    }
-
-    @Test
-    void reduceStockShouldThrowWhenUpdatedStockNegative() {
-        InventoryResponse product = new InventoryResponse();
-        product.setProductId("p1");
-        product.setProductName("Produk A");
-        product.setPrice(20000.0);
-        product.setProductQuantity(1);
-        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
-                .thenReturn(product);
-
-        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 2));
-    }
-
-    @Test
-    void reduceStockShouldSupportNullStockAndPriceFallback() {
-        InventoryResponse product = new InventoryResponse();
-        product.setProductId("p1");
-        product.setProductName("Produk A");
-        product.setPrice(null);
-        product.setProductQuantity(null);
-        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
-                .thenReturn(product);
-
-        assertThrows(IllegalStateException.class, () -> adapter.reduceStock("p1", 1));
+        assertThrows(IllegalStateException.class, () -> adapter.releaseStock("p1", 2));
     }
 
     @Test

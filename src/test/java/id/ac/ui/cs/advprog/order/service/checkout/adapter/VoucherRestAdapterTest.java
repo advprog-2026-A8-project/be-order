@@ -111,6 +111,20 @@ class VoucherRestAdapterTest {
     }
 
     @Test
+    void restoreVoucherShouldCallAdminUpdateEndpoint() {
+        when(restTemplate.patchForObject(anyString(), any(), eq(Map.class)))
+                .thenReturn(Map.of("success", true));
+
+        adapter.restoreVoucher("HEMAT10");
+
+        verify(restTemplate).patchForObject(
+                eq("http://localhost:7002/api/vouchers/admin/update/HEMAT10"),
+                any(),
+                eq(Map.class)
+        );
+    }
+
+    @Test
     void validateDiscountShouldThrowWhenMaxAttemptsNotPositive() {
         ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
         assertThrows(IllegalStateException.class, () -> adapter.validateDiscount("HEMAT10", 10000.0));

@@ -6,7 +6,9 @@ import id.ac.ui.cs.advprog.order.exception.InvalidOrderTransitionException;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
+import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -25,7 +28,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
-    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper tidak valid untuk update statistik.";
+    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper harus UUID valid untuk update statistik.";
     private static final String CANCEL_REFUND_IDEMPOTENCY_PREFIX = "cancel-refund-";
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
@@ -34,6 +37,8 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStateMachine orderStateMachine;
     private final OrderCheckoutFacade orderCheckoutFacade;
     private final WalletGateway walletGateway;
+    private final InventoryGateway inventoryGateway;
+    private final VoucherGateway voucherGateway;
     private final ProfileGateway profileGateway;
 
     private static final List<OrderStatus> ACTIVE_STATUSES = List.of(
@@ -108,6 +113,12 @@ public class OrderServiceImpl implements OrderService {
                 refundAmount,
                 CANCEL_REFUND_IDEMPOTENCY_PREFIX + order.getId()
         );
+        inventoryGateway.releaseStock(order.getProductId(), order.getJumlah());
+        if (Boolean.TRUE.equals(order.getVoucherApplied())
+                && order.getVoucherCode() != null
+                && !order.getVoucherCode().isBlank()) {
+            voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+        }
         order.setStatus(OrderStatus.CANCELLED);
         return orderRepository.save(order);
     }
@@ -257,7 +268,7 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
         }
         validateRatingRange(jastiperRating, productRating);
-        validateNumericJastiperId(order.getJastiperId());
+        validateJastiperUuid(order.getJastiperId());
 
         profileGateway.submitRating(
                 order.getId(),
@@ -280,13 +291,13 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private void validateNumericJastiperId(String jastiperId) {
+    private void validateJastiperUuid(String jastiperId) {
         if (jastiperId == null || jastiperId.isBlank()) {
             throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID);
         }
         try {
-            Long.parseLong(jastiperId);
-        } catch (NumberFormatException ex) {
+            UUID.fromString(jastiperId);
+        } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID, ex);
         }
     }
