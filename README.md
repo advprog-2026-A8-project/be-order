@@ -87,16 +87,19 @@ Base path: `/api/orders`
 - `GET /api/orders/admin/summary`
 
 ## External Contract Integration
-Service ini memakai HTTP integration ke modul lain:
+Service ini memakai kombinasi HTTP + gRPC:
 
-- Inventory: `${ORDER_INVENTORY_URL}`
-- Wallet Contract API: `${ORDER_WALLET_URL}`
-  - `POST /check-balance`
-  - `POST /deduct`
-  - `POST /refund`
+- Inventory (HTTP): `${ORDER_INVENTORY_URL}`
+  - `POST /{id}/reserve?quantity=...`
+  - `PUT /update/{id}` (untuk kompensasi release stock saat cancel/failure)
+- Wallet Contract (gRPC): `${ORDER_WALLET_GRPC_HOST}:${ORDER_WALLET_GRPC_PORT}`
+  - `checkBalance`
+  - `deductBalance`
+  - `refundBalance`
 - Voucher API: `${ORDER_VOUCHER_URL}`
   - `POST /validate`
   - `POST /use`
+  - `PATCH /admin/update/{code}` (restore quota untuk kompensasi)
 - Profile: `${ORDER_PROFILE_URL}`
 
 ## Database & Migration
@@ -106,6 +109,8 @@ Service ini memakai HTTP integration ke modul lain:
   - `V1__init_order_schema.sql`
   - `V2__add_owner_status_indexes.sql`
   - `V3__add_idempotency_order_fk.sql`
+  - `V4__add_voucher_code_column.sql`
+  - `V5__add_voucher_applied_column.sql`
 
 ## Configuration
 Copy `env.example` menjadi `.env`, lalu isi value sesuai environment.
@@ -120,11 +125,15 @@ Variabel utama:
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `ORDER_INVENTORY_URL`
-- `ORDER_WALLET_URL`
-- `ORDER_WALLET_INTERNAL_AUTHORIZATION`
+- `ORDER_INVENTORY_INTERNAL_ROLE`
+- `ORDER_INVENTORY_INTERNAL_USER_ID`
+- `ORDER_WALLET_GRPC_HOST`
+- `ORDER_WALLET_GRPC_PORT`
+- `GRPC_SERVER_INTERNAL_TOKEN`
 - `ORDER_VOUCHER_URL`
 - `ORDER_PROFILE_URL`
 - `ORDER_PROFILE_INTERNAL_AUTHORIZATION`
+- `ORDER_SECURITY_PRINCIPAL_CLAIM`
 
 ## Run with Docker Compose
 Menjalankan app + PostgreSQL untuk local testing dengan profile:

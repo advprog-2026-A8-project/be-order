@@ -63,12 +63,14 @@ public class OrderController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<Order>> getAllOrders() {
         List<Order> orders = orderService.findAllOrders();
         return ResponseEntity.ok(orders);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or @orderAccessGuard.canReadOrder(authentication, #id)")
     public ResponseEntity<Order> getOrderById(@PathVariable String id) {
         Order order = orderService.findOrderById(id);
         if (order == null) {

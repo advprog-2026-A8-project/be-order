@@ -338,4 +338,61 @@ class OrderControllerSecurityTest {
                         .with(user("jastiper-other").roles("JASTIPER")))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void getAllOrdersShouldRejectNonAdmin() throws Exception {
+        mockMvc.perform(get("/api/orders")
+                        .with(user("user-1").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getAllOrdersShouldAllowAdmin() throws Exception {
+        when(orderService.findAllOrders()).thenReturn(List.of(new Order()));
+
+        mockMvc.perform(get("/api/orders")
+                        .with(user("admin-1").roles("ADMIN")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getOrderByIdShouldAllowOwnerTitiper() throws Exception {
+        Order order = new Order();
+        order.setId("order-1");
+        order.setUserId("titiper-1");
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderService.findOrderById("order-1")).thenReturn(order);
+
+        mockMvc.perform(get("/api/orders/order-1")
+                        .with(user("titiper-1").roles("TITIPER")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getOrderByIdShouldAllowOwnerJastiper() throws Exception {
+        Order order = new Order();
+        order.setId("order-1");
+        order.setUserId("titiper-1");
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderService.findOrderById("order-1")).thenReturn(order);
+
+        mockMvc.perform(get("/api/orders/order-1")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getOrderByIdShouldRejectNonOwner() throws Exception {
+        Order order = new Order();
+        order.setId("order-1");
+        order.setUserId("titiper-1");
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        mockMvc.perform(get("/api/orders/order-1")
+                        .with(user("other-user").roles("TITIPER")))
+                .andExpect(status().isForbidden());
+    }
 }

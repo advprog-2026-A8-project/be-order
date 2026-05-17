@@ -39,6 +39,9 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
 
+    @Value("${order.security.principal-claim:sub}")
+    private String principalClaimName;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -71,6 +74,7 @@ public class SecurityConfig {
     public Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(this::extractAuthoritiesFromRolesClaim);
+        converter.setPrincipalClaimName(resolvePrincipalClaimName());
         return converter;
     }
 
@@ -115,5 +119,13 @@ public class SecurityConfig {
             return EMPTY;
         }
         return trimmed.startsWith(ROLE_PREFIX) ? trimmed : ROLE_PREFIX + trimmed;
+    }
+
+    private String resolvePrincipalClaimName() {
+        if (principalClaimName == null) {
+            return "sub";
+        }
+        String normalized = principalClaimName.trim();
+        return normalized.isEmpty() ? "sub" : normalized;
     }
 }
