@@ -124,105 +124,152 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return checkoutLockManager.withProductLock(order.getProductId(), () -> {
-            RuntimeException refundFailure = null;
-            RuntimeException releaseFailure = null;
-            RuntimeException restoreFailure = null;
-            boolean refundSucceeded = false;
-            boolean releaseSucceeded = false;
-            boolean voucherRestoreSucceeded = false;
-
             double refundAmount = order.getTotalAmount() == null ? 0.0 : order.getTotalAmount();
-            try {
-                walletGateway.refund(
-                        order.getUserId(),
-                        order.getId(),
+            CompensationAttempt refundAttempt = tryRefund(order, refundAmount);
+            CompensationAttempt releaseAttempt = tryRelease(order);
+            CompensationAttempt restoreAttempt = hasRestorableVoucher(order)
+                    ? tryRestoreVoucher(order)
+                    : CompensationAttempt.skipped();
+
+            if (hasFailure(refundAttempt, releaseAttempt, restoreAttempt)) {
+                RollbackAttempt rollbackAttempt = rollbackCancellation(
+                        order,
                         refundAmount,
-                        CANCEL_REFUND_IDEMPOTENCY_PREFIX + order.getId()
+                        refundAttempt,
+                        releaseAttempt,
+                        restoreAttempt
                 );
-                refundSucceeded = true;
-            } catch (RuntimeException ex) {
-                refundFailure = ex;
-            }
-
-            try {
-                inventoryGateway.releaseStock(order.getProductId(), order.getJumlah());
-                releaseSucceeded = true;
-            } catch (RuntimeException ex) {
-                releaseFailure = ex;
-            }
-
-            if (Boolean.TRUE.equals(order.getVoucherApplied())
-                    && order.getVoucherCode() != null
-                    && !order.getVoucherCode().isBlank()) {
-                try {
-                    voucherGateway.restoreVoucher(order.getVoucherCode().trim());
-                    voucherRestoreSucceeded = true;
-                } catch (RuntimeException ex) {
-                    restoreFailure = ex;
-                }
-            }
-
-            if (refundFailure != null || releaseFailure != null || restoreFailure != null) {
-                RuntimeException voucherRollbackFailure = null;
-                RuntimeException inventoryRollbackFailure = null;
-                RuntimeException walletRollbackFailure = null;
-
-                if (voucherRestoreSucceeded) {
-                    try {
-                        voucherGateway.useVoucher(order.getVoucherCode().trim());
-                    } catch (RuntimeException ex) {
-                        voucherRollbackFailure = ex;
-                        log.warn(CANCEL_VOUCHER_ROLLBACK_REASON, ex);
-                    }
-                }
-
-                if (releaseSucceeded) {
-                    try {
-                        inventoryGateway.reserveStock(order.getProductId(), order.getJumlah());
-                    } catch (RuntimeException ex) {
-                        inventoryRollbackFailure = ex;
-                        log.warn(CANCEL_RESERVE_ROLLBACK_REASON, ex);
-                    }
-                }
-
-                if (refundSucceeded) {
-                    try {
-                        walletGateway.debit(
-                                order.getUserId(),
-                                order.getId(),
-                                refundAmount,
-                                CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX + order.getId()
-                        );
-                    } catch (RuntimeException ex) {
-                        walletRollbackFailure = ex;
-                    }
-                }
-
-                IllegalStateException wrapped = new IllegalStateException(MESSAGE_CANCEL_COMPENSATION_PARTIAL_FAILURE);
-                if (refundFailure != null) {
-                    wrapped.addSuppressed(refundFailure);
-                }
-                if (releaseFailure != null) {
-                    wrapped.addSuppressed(releaseFailure);
-                }
-                if (restoreFailure != null) {
-                    wrapped.addSuppressed(restoreFailure);
-                }
-                if (voucherRollbackFailure != null) {
-                    wrapped.addSuppressed(voucherRollbackFailure);
-                }
-                if (inventoryRollbackFailure != null) {
-                    wrapped.addSuppressed(inventoryRollbackFailure);
-                }
-                if (walletRollbackFailure != null) {
-                    wrapped.addSuppressed(walletRollbackFailure);
-                }
-                throw wrapped;
+                throw buildCompensationFailure(
+                        refundAttempt,
+                        releaseAttempt,
+                        restoreAttempt,
+                        rollbackAttempt
+                );
             }
 
             order.setStatus(OrderStatus.CANCELLED);
             return orderRepository.save(order);
         });
+    }
+
+    private CompensationAttempt tryRefund(Order order, double refundAmount) {
+        try {
+            walletGateway.refund(
+                    order.getUserId(),
+                    order.getId(),
+                    refundAmount,
+                    CANCEL_REFUND_IDEMPOTENCY_PREFIX + order.getId()
+            );
+            return CompensationAttempt.success();
+        } catch (RuntimeException ex) {
+            return CompensationAttempt.failure(ex);
+        }
+    }
+
+    private CompensationAttempt tryRelease(Order order) {
+        try {
+            inventoryGateway.releaseStock(order.getProductId(), order.getJumlah());
+            return CompensationAttempt.success();
+        } catch (RuntimeException ex) {
+            return CompensationAttempt.failure(ex);
+        }
+    }
+
+    private CompensationAttempt tryRestoreVoucher(Order order) {
+        try {
+            voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+            return CompensationAttempt.success();
+        } catch (RuntimeException ex) {
+            return CompensationAttempt.failure(ex);
+        }
+    }
+
+    private boolean hasRestorableVoucher(Order order) {
+        return Boolean.TRUE.equals(order.getVoucherApplied())
+                && order.getVoucherCode() != null
+                && !order.getVoucherCode().isBlank();
+    }
+
+    private boolean hasFailure(CompensationAttempt refund, CompensationAttempt release, CompensationAttempt restore) {
+        return refund.hasFailure() || release.hasFailure() || restore.hasFailure();
+    }
+
+    private RollbackAttempt rollbackCancellation(
+            Order order,
+            double refundAmount,
+            CompensationAttempt refundAttempt,
+            CompensationAttempt releaseAttempt,
+            CompensationAttempt restoreAttempt
+    ) {
+        RuntimeException voucherRollbackFailure = rollbackVoucherIfNeeded(order, restoreAttempt);
+        RuntimeException inventoryRollbackFailure = rollbackInventoryIfNeeded(order, releaseAttempt);
+        RuntimeException walletRollbackFailure = rollbackWalletIfNeeded(order, refundAmount, refundAttempt);
+        return new RollbackAttempt(voucherRollbackFailure, inventoryRollbackFailure, walletRollbackFailure);
+    }
+
+    private RuntimeException rollbackVoucherIfNeeded(Order order, CompensationAttempt restoreAttempt) {
+        if (!restoreAttempt.wasSuccessful()) {
+            return null;
+        }
+        try {
+            voucherGateway.useVoucher(order.getVoucherCode().trim());
+            return null;
+        } catch (RuntimeException ex) {
+            log.warn(CANCEL_VOUCHER_ROLLBACK_REASON, ex);
+            return ex;
+        }
+    }
+
+    private RuntimeException rollbackInventoryIfNeeded(Order order, CompensationAttempt releaseAttempt) {
+        if (!releaseAttempt.wasSuccessful()) {
+            return null;
+        }
+        try {
+            inventoryGateway.reserveStock(order.getProductId(), order.getJumlah());
+            return null;
+        } catch (RuntimeException ex) {
+            log.warn(CANCEL_RESERVE_ROLLBACK_REASON, ex);
+            return ex;
+        }
+    }
+
+    private RuntimeException rollbackWalletIfNeeded(Order order, double refundAmount, CompensationAttempt refundAttempt) {
+        if (!refundAttempt.wasSuccessful()) {
+            return null;
+        }
+        try {
+            walletGateway.debit(
+                    order.getUserId(),
+                    order.getId(),
+                    refundAmount,
+                    CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX + order.getId()
+            );
+            return null;
+        } catch (RuntimeException ex) {
+            return ex;
+        }
+    }
+
+    private IllegalStateException buildCompensationFailure(
+            CompensationAttempt refundAttempt,
+            CompensationAttempt releaseAttempt,
+            CompensationAttempt restoreAttempt,
+            RollbackAttempt rollbackAttempt
+    ) {
+        IllegalStateException wrapped = new IllegalStateException(MESSAGE_CANCEL_COMPENSATION_PARTIAL_FAILURE);
+        addSuppressedIfPresent(wrapped, refundAttempt.failure());
+        addSuppressedIfPresent(wrapped, releaseAttempt.failure());
+        addSuppressedIfPresent(wrapped, restoreAttempt.failure());
+        addSuppressedIfPresent(wrapped, rollbackAttempt.voucherRollbackFailure());
+        addSuppressedIfPresent(wrapped, rollbackAttempt.inventoryRollbackFailure());
+        addSuppressedIfPresent(wrapped, rollbackAttempt.walletRollbackFailure());
+        return wrapped;
+    }
+
+    private void addSuppressedIfPresent(IllegalStateException wrapped, RuntimeException failure) {
+        if (failure != null) {
+            wrapped.addSuppressed(failure);
+        }
     }
 
     @Override
@@ -432,5 +479,34 @@ public class OrderServiceImpl implements OrderService {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID, ex);
         }
+    }
+
+    private record CompensationAttempt(boolean successful, RuntimeException failure) {
+        static CompensationAttempt success() {
+            return new CompensationAttempt(true, null);
+        }
+
+        static CompensationAttempt failure(RuntimeException failure) {
+            return new CompensationAttempt(false, failure);
+        }
+
+        static CompensationAttempt skipped() {
+            return new CompensationAttempt(false, null);
+        }
+
+        boolean wasSuccessful() {
+            return successful;
+        }
+
+        boolean hasFailure() {
+            return failure != null;
+        }
+    }
+
+    private record RollbackAttempt(
+            RuntimeException voucherRollbackFailure,
+            RuntimeException inventoryRollbackFailure,
+            RuntimeException walletRollbackFailure
+    ) {
     }
 }

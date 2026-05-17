@@ -17,7 +17,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -110,7 +110,7 @@ class OrderCheckoutFacadeTest {
         Order result = checkoutFacade.checkout(order);
 
         assertEquals(8500.0, result.getTotalAmount());
-        assertTrue(Boolean.TRUE.equals(result.getVoucherApplied()));
+        assertEquals(Boolean.TRUE, result.getVoucherApplied());
         verify(walletGateway).ensureSufficientBalance("u1", 8500.0);
         verify(walletGateway).debit(anyString(), anyString(), eq(8500.0), anyString());
         verify(voucherGateway).useVoucher("HEMAT10");
@@ -154,7 +154,7 @@ class OrderCheckoutFacadeTest {
 
         assertEquals(OrderStatus.PAID, result.getStatus());
         assertEquals(9000.0, result.getTotalAmount());
-        assertFalse(Boolean.TRUE.equals(result.getVoucherApplied()));
+        assertNotEquals(Boolean.TRUE, result.getVoucherApplied());
         verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VOUCHER_USE_FAILED_AFTER_CHECKOUT);
     }
 
