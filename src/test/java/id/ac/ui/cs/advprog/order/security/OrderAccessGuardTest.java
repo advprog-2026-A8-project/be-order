@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,6 +44,14 @@ class OrderAccessGuardTest {
     void isOwnerShouldReturnFalseWhenAuthenticationNameDiffers() {
         Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
         assertFalse(guard.isOwner(auth, "user-2"));
+    }
+
+    @Test
+    void isOwnerShouldReturnFalseWhenAuthenticationOrUserIdInvalid() {
+        Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
+        assertFalse(guard.isOwner(null, "user-1"));
+        assertFalse(guard.isOwner(auth, null));
+        assertFalse(guard.isOwner(auth, "   "));
     }
 
     @Test
@@ -126,6 +135,44 @@ class OrderAccessGuardTest {
 
         assertThrows(IllegalArgumentException.class, () -> guard.resolveCheckoutUserId(auth, " "));
         assertThrows(IllegalArgumentException.class, () -> guard.resolveCheckoutUserId(auth, "user-2"));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldFallbackToUuidCandidateWhenNoExactMatchOnSecondExtraction() {
+        String uuidCandidate = UUID.randomUUID().toString();
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("user-1", uuidCandidate);
+
+        assertEquals(uuidCandidate, guard.resolveCheckoutUserId(auth, "user-1"));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldFallbackToRequestedWhenNoExactMatchAndNoUuidCandidate() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("user-1", "other-identity");
+
+        assertEquals("user-1", guard.resolveCheckoutUserId(auth, "user-1"));
+    }
+
+    @Test
+    void isOwnerShouldAcceptJwtEmailAndIdClaims() {
+        Jwt emailJwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "sub-value", "email", "mail@example.com")
+        );
+        Jwt idJwt = new Jwt(
+                "token-2",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "sub-value", "id", "internal-id-1")
+        );
+
+        assertTrue(guard.isOwner(new JwtAuthenticationToken(emailJwt), "mail@example.com"));
+        assertTrue(guard.isOwner(new JwtAuthenticationToken(idJwt), "internal-id-1"));
     }
 
     @Test

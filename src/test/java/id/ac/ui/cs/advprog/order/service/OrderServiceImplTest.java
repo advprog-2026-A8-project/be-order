@@ -275,6 +275,45 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testCancelOrderByJastiperShouldRollbackReserveWhenRefundFailsButReleaseSucceeded() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        doThrow(new IllegalStateException("refund failed"))
+                .when(walletGateway).refund(eq("u1"), eq("order-1"), eq(10000.0), anyString());
+
+        assertThrows(IllegalStateException.class, () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
+
+        verify(inventoryGateway).releaseStock("p1", 1);
+        verify(inventoryGateway).reserveStock("p1", 1);
+        verify(walletGateway, never()).debit(eq("u1"), eq("order-1"), eq(10000.0), anyString());
+    }
+
+    @Test
+    void testCancelOrderByJastiperShouldRollbackDebitAndReserveWhenVoucherRestoreFails() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
+        order.setVoucherCode("HEMAT10");
+        order.setVoucherApplied(true);
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        doThrow(new IllegalStateException("restore failed")).when(voucherGateway).restoreVoucher("HEMAT10");
+
+        assertThrows(IllegalStateException.class, () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
+
+        verify(inventoryGateway).reserveStock("p1", 1);
+        verify(walletGateway).debit(eq("u1"), eq("order-1"), eq(10000.0), anyString());
+        verify(voucherGateway, never()).useVoucher("HEMAT10");
+    }
+
+    @Test
     void testCancelOrderByJastiperShouldAttemptVoucherRollbackWhenRestoreSucceededButLaterFailed() {
         order.setStatus(OrderStatus.PAID);
         order.setJastiperId("jastiper-1");
@@ -439,6 +478,31 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testSubmitRatingShouldAllowBoundaryRange() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Order result = orderService.submitOrderRating("order-1", "user-1", 1, 5);
+
+        assertEquals(1, result.getJastiperRating());
+        assertEquals(5, result.getProductRating());
+    }
+
+    @Test
+    void testSubmitRatingShouldFailWhenJastiperIdNull() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId(null);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+    }
+
+    @Test
     void testSubmitRatingShouldFailWhenJastiperIdNonUuid() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
@@ -574,6 +638,12 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testGetAdminOrdersByStatusPagedWithSortingShouldRejectInvalidStatus() {
+        assertThrows(IllegalArgumentException.class,
+                () -> orderService.findAdminOrdersByStatusPaged("UNKNOWN", 0, 5, "id", "asc"));
+    }
+
+    @Test
     void testGetAdminActiveOrdersPaged() {
         order.setStatus(OrderStatus.PAID);
         Page<Order> page = new PageImpl<>(List.of(order));
@@ -612,6 +682,17 @@ class OrderServiceImplTest {
     void testGetAdminActiveOrdersPagedWithSortingShouldRejectInvalidSortBy() {
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.findAdminActiveOrdersPaged(0, 10, "createdAt", "asc"));
+    }
+
+    @Test
+    void testGetAdminActiveOrdersPagedWithSortingShouldUseDefaultsWhenSortAndDirectionBlank() {
+        order.setStatus(OrderStatus.PAID);
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatusIn(any(), any(org.springframework.data.domain.Pageable.class))).thenReturn(page);
+
+        Page<Order> result = orderService.findAdminActiveOrdersPaged(0, 10, "   ", "   ");
+
+        assertEquals(1, result.getTotalElements());
     }
 
 }

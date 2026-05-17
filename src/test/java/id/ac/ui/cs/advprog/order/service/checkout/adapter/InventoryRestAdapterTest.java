@@ -68,6 +68,16 @@ class InventoryRestAdapterTest {
     }
 
     @Test
+    void getProductShouldRetryAndThrowWhenTransientFailureExhausted() {
+        when(restTemplate.getForObject(anyString(), eq(InventoryResponse.class)))
+                .thenThrow(new ResourceAccessException("timeout-1"))
+                .thenThrow(new ResourceAccessException("timeout-2"));
+
+        assertThrows(IllegalStateException.class, () -> adapter.getProduct("p1"));
+        verify(restTemplate, times(2)).getForObject(anyString(), eq(InventoryResponse.class));
+    }
+
+    @Test
     void reserveStockSuccess() {
         adapter.reserveStock("p1", 2);
         verify(restTemplate).postForObject("http://localhost:8081/api/products/p1/reserve?quantity=2", null, String.class);
@@ -182,6 +192,67 @@ class InventoryRestAdapterTest {
                 );
 
         assertThrows(IllegalStateException.class, () -> adapter.releaseStock("p1", 2));
+    }
+
+    @Test
+    void releaseStockShouldThrowWhenTransientFailureExhausted() {
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setPrice(20000.0);
+        product.setProductQuantity(10);
+        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
+                .thenReturn(product);
+
+        doThrow(new ResourceAccessException("timeout-1"))
+                .doThrow(new ResourceAccessException("timeout-2"))
+                .when(restTemplate).exchange(
+                        eq("http://localhost:8081/api/products/update/p1"),
+                        eq(HttpMethod.PUT),
+                        argThat(Objects::nonNull),
+                        eq(Void.class)
+                );
+
+        assertThrows(IllegalStateException.class, () -> adapter.releaseStock("p1", 2));
+    }
+
+    @Test
+    void releaseStockShouldUseDefaultsWhenProductFieldsAndInternalHeadersAreNull() {
+        ReflectionTestUtils.setField(adapter, "inventoryInternalRole", null);
+        ReflectionTestUtils.setField(adapter, "inventoryInternalUserId", null);
+
+        InventoryResponse product = new InventoryResponse();
+        product.setProductId("p1");
+        product.setProductName("Produk A");
+        product.setDescription(null);
+        product.setPrice(null);
+        product.setProductQuantity(null);
+        product.setJastiperId(null);
+
+        when(restTemplate.getForObject("http://localhost:8081/api/products/p1", InventoryResponse.class))
+                .thenReturn(product);
+
+        AtomicReference<HttpEntity<?>> requestRef = new AtomicReference<>();
+        doAnswer(invocation -> {
+            requestRef.set(invocation.getArgument(2));
+            return ResponseEntity.ok().build();
+        }).when(restTemplate).exchange(
+                eq("http://localhost:8081/api/products/update/p1"),
+                eq(HttpMethod.PUT),
+                any(HttpEntity.class),
+                eq(Void.class)
+        );
+
+        adapter.releaseStock("p1", 2);
+
+        @SuppressWarnings("unchecked")
+        var payload = (java.util.Map<String, Object>) requestRef.get().getBody();
+        assertEquals(2, payload.get("stock"));
+        assertEquals("", payload.get("description"));
+        assertEquals(0.0, payload.get("price"));
+        assertEquals("", payload.get("jastiperId"));
+        assertEquals("", requestRef.get().getHeaders().getFirst("X-User-Role"));
+        assertEquals("", requestRef.get().getHeaders().getFirst("X-User-Id"));
     }
 
     @Test

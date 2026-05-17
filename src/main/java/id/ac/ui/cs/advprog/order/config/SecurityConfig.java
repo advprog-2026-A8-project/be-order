@@ -104,6 +104,7 @@ public class SecurityConfig {
 
         return allRoles.stream()
                 .map(this::normalizeRoleName)
+                .filter(role -> !role.isBlank())
                 .filter(role -> !role.equals(ROLE_PREFIX))
                 .distinct()
                 .map(SimpleGrantedAuthority::new)

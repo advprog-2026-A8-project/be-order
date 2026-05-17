@@ -117,6 +117,20 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutWithVoucherShouldClampTotalToZeroWhenDiscountExceedsBasePrice() {
+        order.setVoucherCode("HEMAT10");
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(15000.0);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Order result = checkoutFacade.checkout(order);
+
+        assertEquals(0.0, result.getTotalAmount());
+        verify(walletGateway).ensureSufficientBalance("u1", 0.0);
+        verify(walletGateway).debit(anyString(), anyString(), eq(0.0), anyString());
+    }
+
+    @Test
     void checkoutWithInvalidVoucherShouldFailBeforeWalletCharge() {
         order.setVoucherCode("BADVOUCHER");
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
@@ -279,6 +293,19 @@ class OrderCheckoutFacadeTest {
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         assertTrue(ex.getMessage().contains("Kompensasi"));
+    }
+
+    @Test
+    void checkoutShouldThrowWhenSaveFailsAndAllCompensationsFail() {
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
+        doThrow(new IllegalStateException("refund failed"))
+                .when(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
+        doThrow(new IllegalStateException("release failed")).when(inventoryGateway).releaseStock("p1", 2);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+        assertTrue(ex.getSuppressed().length >= 2);
+        verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
     }
 
     @Test
@@ -445,5 +472,17 @@ class OrderCheckoutFacadeTest {
         when(orderRepository.findById("order-202")).thenReturn(java.util.Optional.of(raceWinnerOrder));
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-race-mismatch"));
+    }
+
+    @Test
+    void checkoutWithBlankIdempotencyKeyShouldFallbackToNonIdempotentFlow() {
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Order result = checkoutFacade.checkout(order, "   ");
+
+        assertEquals(OrderStatus.PAID, result.getStatus());
+        verify(orderIdempotencyRepository, never()).findById(anyString());
+        verify(orderIdempotencyRepository, never()).save(any(OrderIdempotency.class));
     }
 }

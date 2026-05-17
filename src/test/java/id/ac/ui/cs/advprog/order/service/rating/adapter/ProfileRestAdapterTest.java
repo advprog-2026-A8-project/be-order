@@ -114,6 +114,14 @@ class ProfileRestAdapterTest {
     }
 
     @Test
+    void submitRatingShouldThrowWhenJastiperIdNullOrBlank() {
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", null, "p1", 5, 4));
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "   ", "p1", 5, 4));
+    }
+
+    @Test
     void submitRatingShouldThrowWhenJastiperIdNotUuid() {
         assertThrows(IllegalArgumentException.class, () ->
                 adapter.submitRating("o1", "1", "0", "p1", 5, 4));
