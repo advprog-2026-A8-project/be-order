@@ -39,6 +39,34 @@ class WalletGrpcStubFactoryTest {
     }
 
     @Test
+    void createStubShouldWorkWithQuotedToken() {
+        WalletGrpcStubFactory factory = new WalletGrpcStubFactory();
+        ReflectionTestUtils.setField(factory, "grpcHost", "localhost");
+        ReflectionTestUtils.setField(factory, "grpcPort", 9090);
+        ReflectionTestUtils.setField(factory, "internalToken", "\"quoted-token\"");
+
+        ReflectionTestUtils.invokeMethod(factory, "init");
+        WalletContractServiceGrpc.WalletContractServiceBlockingStub stub = factory.createStub();
+
+        assertNotNull(stub);
+        ReflectionTestUtils.invokeMethod(factory, "destroy");
+    }
+
+    @Test
+    void createStubShouldWorkWithBearerAndQuotedToken() {
+        WalletGrpcStubFactory factory = new WalletGrpcStubFactory();
+        ReflectionTestUtils.setField(factory, "grpcHost", "localhost");
+        ReflectionTestUtils.setField(factory, "grpcPort", 9090);
+        ReflectionTestUtils.setField(factory, "internalToken", "Bearer \"quoted-token\"");
+
+        ReflectionTestUtils.invokeMethod(factory, "init");
+        WalletContractServiceGrpc.WalletContractServiceBlockingStub stub = factory.createStub();
+
+        assertNotNull(stub);
+        ReflectionTestUtils.invokeMethod(factory, "destroy");
+    }
+
+    @Test
     void createStubShouldThrowWhenTokenMissing() {
         WalletGrpcStubFactory factory = new WalletGrpcStubFactory();
         ReflectionTestUtils.setField(factory, "grpcHost", "localhost");

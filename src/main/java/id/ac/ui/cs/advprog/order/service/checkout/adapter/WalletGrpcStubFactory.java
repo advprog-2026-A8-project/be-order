@@ -55,6 +55,25 @@ public class WalletGrpcStubFactory {
     }
 
     private String normalizeTokenValue(String token) {
-        return token == null ? "" : token.trim();
+        if (token == null) {
+            return "";
+        }
+
+        String normalized = token.trim();
+        if (normalized.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+            normalized = normalized.substring("Bearer ".length()).trim();
+        }
+
+        if (hasWrappingQuote(normalized)) {
+            normalized = normalized.substring(1, normalized.length() - 1).trim();
+        }
+
+        return normalized;
+    }
+
+    private boolean hasWrappingQuote(String token) {
+        return token.length() >= 2
+                && ((token.startsWith("\"") && token.endsWith("\""))
+                || (token.startsWith("'") && token.endsWith("'")));
     }
 }
