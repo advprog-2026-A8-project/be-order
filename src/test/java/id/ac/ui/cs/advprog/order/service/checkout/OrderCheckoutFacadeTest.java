@@ -14,7 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,10 +25,11 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class OrderCheckoutFacadeTest {
@@ -61,6 +62,11 @@ class OrderCheckoutFacadeTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(checkoutLockManager.withProductLock(anyString(), any()))
+                .thenAnswer(invocation -> runCriticalSection(invocation.getArgument(1)));
+        lenient().when(checkoutLockManager.withIdempotencyLock(anyString(), any()))
+                .thenAnswer(invocation -> runCriticalSection(invocation.getArgument(1)));
+
         order = new Order();
         order.setProductId("p1");
         order.setUserId("u1");
@@ -72,9 +78,12 @@ class OrderCheckoutFacadeTest {
         product.setPrice(5000.0);
     }
 
+    private <T> T runCriticalSection(Supplier<T> criticalSection) {
+        return criticalSection.get();
+    }
+
     @Test
     void checkoutSuccessShouldSetPaidAndPersist() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -94,7 +103,6 @@ class OrderCheckoutFacadeTest {
     @Test
     void checkoutWithVoucherShouldApplyDiscountAndUseVoucher() {
         order.setVoucherCode("HEMAT10");
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1500.0);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -111,7 +119,6 @@ class OrderCheckoutFacadeTest {
     @Test
     void checkoutWithInvalidVoucherShouldFailBeforeWalletCharge() {
         order.setVoucherCode("BADVOUCHER");
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalArgumentException("invalid voucher"))
                 .when(voucherGateway).validateDiscount("BADVOUCHER", 10000.0);
@@ -124,7 +131,6 @@ class OrderCheckoutFacadeTest {
     @Test
     void checkoutShouldStillSucceedWhenVoucherUseFailsAfterCheckout() {
         order.setVoucherCode("HEMAT10");
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1000.0);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -184,7 +190,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldRejectWhenInventoryProductMissingOrInsufficient() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(null);
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
         verify(checkoutAuditLogger).logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
@@ -197,7 +202,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldRejectWhenInventoryPriceMissingOrInvalid() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
 
         product.setPrice(null);
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
@@ -214,7 +218,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldPropagateWalletFailureAndNotReduceStock() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalArgumentException("wallet error"))
                 .when(walletGateway).ensureSufficientBalance("u1", 10000.0);
@@ -226,7 +229,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldRefundWhenStockReductionFailsAfterDebit() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reserveStock("p1", 2);
 
@@ -237,7 +239,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldWrapWhenRefundAlsoFailsAfterStockReductionFailure() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reserveStock("p1", 2);
         doThrow(new IllegalStateException("refund down"))
@@ -261,7 +262,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldCompensateRefundAndReleaseWhenSaveFailsAfterReserve() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
 
@@ -273,7 +273,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutShouldThrowWhenSaveFailsAndReleaseAlsoFails() {
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
         doThrow(new IllegalStateException("release failed")).when(inventoryGateway).releaseStock("p1", 2);
@@ -285,7 +284,6 @@ class OrderCheckoutFacadeTest {
     @Test
     void checkoutShouldRestoreVoucherWhenSaveFailsAfterVoucherApplied() {
         order.setVoucherCode("HEMAT10");
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1000.0);
         doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
@@ -297,8 +295,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutWithIdempotencyKeyShouldStoreKeyOnFirstRequest() {
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-1")).thenReturn(java.util.Optional.empty());
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
@@ -323,7 +319,6 @@ class OrderCheckoutFacadeTest {
         existingOrder.setJastiperId(null);
         existingOrder.setAlamatPengiriman(null);
 
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-1"))
                 .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-100")));
         when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
@@ -339,7 +334,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutWithExistingIdempotencyKeyButMissingOrderShouldThrow() {
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-1"))
                 .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-404")));
         when(orderRepository.findById("order-404")).thenReturn(java.util.Optional.empty());
@@ -364,7 +358,6 @@ class OrderCheckoutFacadeTest {
         newPayload.setJastiperId("j1");
         newPayload.setAlamatPengiriman("alamat lama");
 
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-1"))
                 .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-1", "order-100")));
         when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
@@ -390,8 +383,6 @@ class OrderCheckoutFacadeTest {
         existingOrder.setJastiperId(null);
         existingOrder.setAlamatPengiriman(null);
 
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-race")).thenReturn(new ReentrantLock());
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-race"))
                 .thenReturn(java.util.Optional.empty())
                 .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race", "order-100")));
@@ -413,8 +404,6 @@ class OrderCheckoutFacadeTest {
 
     @Test
     void checkoutWithIdempotencyShouldThrowDomainErrorWhenRaceWinnerRecordMissing() {
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-missing")).thenReturn(new ReentrantLock());
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-missing"))
                 .thenReturn(java.util.Optional.empty())
                 .thenReturn(java.util.Optional.empty());
@@ -441,8 +430,6 @@ class OrderCheckoutFacadeTest {
         raceWinnerOrder.setJastiperId(null);
         raceWinnerOrder.setAlamatPengiriman(null);
 
-        when(checkoutLockManager.getLockForIdempotencyKey("idem-race-mismatch")).thenReturn(new ReentrantLock());
-        when(checkoutLockManager.getLockForProduct("p1")).thenReturn(new ReentrantLock());
         when(orderIdempotencyRepository.findById("idem-race-mismatch"))
                 .thenReturn(java.util.Optional.empty())
                 .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race-mismatch", "order-202")));

@@ -12,7 +12,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 @RequiredArgsConstructor
@@ -59,9 +58,7 @@ public class OrderCheckoutFacade {
     }
 
     private Order checkoutWithIdempotency(Order order, String idempotencyKey) {
-        ReentrantLock idempotencyLock = checkoutLockManager.getLockForIdempotencyKey(idempotencyKey);
-        idempotencyLock.lock();
-        try {
+        return checkoutLockManager.withIdempotencyLock(idempotencyKey, () -> {
             OrderIdempotency existingRecord = orderIdempotencyRepository.findById(idempotencyKey).orElse(null);
             if (existingRecord != null) {
                 Order existingOrder = orderRepository.findById(existingRecord.getOrderId())
@@ -81,15 +78,11 @@ public class OrderCheckoutFacade {
             } catch (DataIntegrityViolationException ex) {
                 return resolveRaceWinnerOrder(idempotencyKey, order, ex);
             }
-        } finally {
-            idempotencyLock.unlock();
-        }
+        });
     }
 
     private Order performCheckout(Order order, String idempotencyKey) {
-        ReentrantLock lock = checkoutLockManager.getLockForProduct(order.getProductId());
-        lock.lock();
-        try {
+        return checkoutLockManager.withProductLock(order.getProductId(), () -> {
             ensureOrderId(order);
             String walletIdempotencyKey = resolveWalletIdempotencyKey(order, idempotencyKey);
 
@@ -130,9 +123,7 @@ public class OrderCheckoutFacade {
                 throw handleOrderSaveFailureAfterDebitAndReserve(order, totalPrice, walletIdempotencyKey, voucherApplied, ex);
             }
             return savedOrder;
-        } finally {
-            lock.unlock();
-        }
+        });
     }
 
     private void validateOrderRequest(Order order) {
