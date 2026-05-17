@@ -2,9 +2,11 @@ package id.ac.ui.cs.advprog.order.service;
 
 import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
+import id.ac.ui.cs.advprog.order.exception.InvalidOrderTransitionException;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.checkout.CheckoutLockManager;
 import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
@@ -23,6 +25,7 @@ import org.springframework.data.domain.PageRequest;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -31,7 +34,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +65,9 @@ class OrderServiceImplTest {
     @Mock
     private ProfileGateway profileGateway;
 
+    @Mock
+    private CheckoutLockManager checkoutLockManager;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 
@@ -66,12 +75,21 @@ class OrderServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(checkoutLockManager.withProductLock(anyString(), any()))
+                .thenAnswer(invocation -> runCriticalSection(invocation.getArgument(1)));
+        lenient().when(checkoutLockManager.withIdempotencyLock(anyString(), any()))
+                .thenAnswer(invocation -> runCriticalSection(invocation.getArgument(1)));
+
         order = new Order();
         order.setId("order-1");
         order.setProductId("p1");
         order.setUserId("u1");
         order.setJumlah(1);
         order.setStatus(OrderStatus.PENDING);
+    }
+
+    private <T> T runCriticalSection(Supplier<T> criticalSection) {
+        return criticalSection.get();
     }
 
     @Test
@@ -129,7 +147,7 @@ class OrderServiceImplTest {
         order.setStatus(OrderStatus.PAID);
         when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.COMPLETED)).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(InvalidOrderTransitionException.class, () ->
                 orderService.updateOrderStatus("order-1", "COMPLETED"));
     }
 
@@ -240,6 +258,42 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testCancelOrderByJastiperShouldAttemptRollbackWhenReleaseFails() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        doThrow(new IllegalStateException("release failed")).when(inventoryGateway).releaseStock("p1", 1);
+
+        assertThrows(IllegalStateException.class, () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
+
+        verify(walletGateway).refund(eq("u1"), eq("order-1"), eq(10000.0), anyString());
+        verify(walletGateway).debit(eq("u1"), eq("order-1"), eq(10000.0), anyString());
+    }
+
+    @Test
+    void testCancelOrderByJastiperShouldAttemptVoucherRollbackWhenRestoreSucceededButLaterFailed() {
+        order.setStatus(OrderStatus.PAID);
+        order.setJastiperId("jastiper-1");
+        order.setProductId("p1");
+        order.setJumlah(1);
+        order.setVoucherCode("HEMAT10");
+        order.setVoucherApplied(true);
+        order.setTotalAmount(10000.0);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
+        doThrow(new IllegalStateException("release failed")).when(inventoryGateway).releaseStock("p1", 1);
+
+        assertThrows(IllegalStateException.class, () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
+
+        verify(voucherGateway).restoreVoucher("HEMAT10");
+        verify(voucherGateway).useVoucher("HEMAT10");
+    }
+
+    @Test
     void testGetTitiperActiveOrders() {
         when(orderRepository.findByUserIdAndStatusIn(anyString(), any()))
                 .thenReturn(List.of(order));
@@ -290,7 +344,7 @@ class OrderServiceImplTest {
         order.setUserId("user-1");
         order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
-        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Order result = orderService.submitOrderRating("order-1", "user-1", 5, 4);
 
@@ -298,6 +352,42 @@ class OrderServiceImplTest {
         assertEquals(4, result.getProductRating());
         verify(profileGateway).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
         verify(orderRepository).save(order);
+    }
+
+    @Test
+    void testSubmitRatingShouldThrowWhenProfileSyncFailsAfterOrderSaved() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new IllegalStateException("profile down"))
+                .when(profileGateway)
+                .submitRating(anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt());
+
+        assertThrows(IllegalStateException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
+        verify(orderRepository, times(2)).save(order);
+    }
+
+    @Test
+    void testSubmitRatingShouldThrowWhenProfileAndRollbackBothFail() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class)))
+                .thenReturn(order)
+                .thenThrow(new IllegalStateException("rollback save failed"));
+        doThrow(new IllegalStateException("profile down"))
+                .when(profileGateway)
+                .submitRating(anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt());
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4)
+        );
+        assertEquals(1, ex.getSuppressed().length);
     }
 
     @Test

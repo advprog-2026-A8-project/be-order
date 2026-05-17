@@ -16,8 +16,11 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
@@ -88,16 +91,41 @@ class OrderAccessGuardTest {
 
     @Test
     void isOwnerShouldUseJwtUserIdClaimWhenAvailable() {
+        String userId = "550e8400-e29b-41d4-a716-446655440000";
         Jwt jwt = new Jwt(
                 "token",
                 Instant.now(),
                 Instant.now().plusSeconds(300),
                 Map.of("alg", "none"),
-                Map.of("sub", "user@example.com", "userId", "550e8400-e29b-41d4-a716-446655440000")
+                Map.of("sub", "user@example.com", "userId", userId)
         );
         Authentication auth = new JwtAuthenticationToken(jwt);
 
-        assertTrue(guard.isOwner(auth, "550e8400-e29b-41d4-a716-446655440000"));
+        assertTrue(guard.isOwner(auth, userId));
+        assertEquals(userId, guard.resolveCheckoutUserId(auth, userId));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldPreferUuidIdentityWhenRequestMatches() {
+        String userId = UUID.randomUUID().toString();
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "user@example.com", "userId", userId)
+        );
+        Authentication auth = new JwtAuthenticationToken(jwt);
+
+        assertEquals(userId, guard.resolveCheckoutUserId(auth, userId));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldRejectBlankOrUnauthorizedRequestUser() {
+        Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
+
+        assertThrows(IllegalArgumentException.class, () -> guard.resolveCheckoutUserId(auth, " "));
+        assertThrows(IllegalArgumentException.class, () -> guard.resolveCheckoutUserId(auth, "user-2"));
     }
 
     @Test

@@ -8,6 +8,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -18,9 +23,9 @@ public class CheckoutLockManager {
     private static final String MESSAGE_IDEMPOTENCY_KEY_REQUIRED = "Idempotency key lock tidak boleh kosong";
     private static final String LOCK_MODE_LOCAL = "local";
     private static final String MESSAGE_ADVISORY_LOCK_FAILED = "Gagal mengambil advisory lock PostgreSQL untuk checkout";
-    private static final int PRODUCT_LOCK_NAMESPACE = 1001;
-    private static final int IDEMPOTENCY_LOCK_NAMESPACE = 1002;
-    private static final String POSTGRES_XACT_LOCK_QUERY = "SELECT pg_advisory_xact_lock(?, ?)";
+    private static final long PRODUCT_LOCK_NAMESPACE = 1001L;
+    private static final long IDEMPOTENCY_LOCK_NAMESPACE = 1002L;
+    private static final String POSTGRES_XACT_LOCK_QUERY = "SELECT pg_advisory_xact_lock(?)";
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -61,7 +66,7 @@ public class CheckoutLockManager {
     }
 
     private <T> T executeWithLock(
-            int namespace,
+            long namespace,
             String normalizedKey,
             ConcurrentHashMap<String, ReentrantLock> fallbackLocks,
             Supplier<T> criticalSection
@@ -69,10 +74,11 @@ public class CheckoutLockManager {
         if (LOCK_MODE_LOCAL.equals(lockMode)) {
             return executeWithLocalLock(normalizedKey, fallbackLocks, criticalSection);
         }
-        return transactionTemplate.execute(status -> {
+        T result = transactionTemplate.execute(status -> {
             acquirePostgresAdvisoryLock(namespace, normalizedKey);
             return criticalSection.get();
         });
+        return Objects.requireNonNull(result, "Critical section tidak boleh mengembalikan null");
     }
 
     private <T> T executeWithLocalLock(
@@ -89,14 +95,13 @@ public class CheckoutLockManager {
         }
     }
 
-    private void acquirePostgresAdvisoryLock(int namespace, String lockKey) {
-        int hashedLockKey = lockKey.hashCode();
+    private void acquirePostgresAdvisoryLock(long namespace, String lockKey) {
+        long advisoryKey = computeAdvisoryKey(namespace, lockKey);
         try {
             jdbcTemplate.execute(
                     POSTGRES_XACT_LOCK_QUERY,
                     (PreparedStatementCallback<Void>) preparedStatement -> {
-                        preparedStatement.setInt(1, namespace);
-                        preparedStatement.setInt(2, hashedLockKey);
+                        preparedStatement.setLong(1, advisoryKey);
                         preparedStatement.execute();
                         return null;
                     }
@@ -120,6 +125,21 @@ public class CheckoutLockManager {
     private <T> void validateCriticalSection(Supplier<T> criticalSection) {
         if (criticalSection == null) {
             throw new IllegalArgumentException("Critical section tidak boleh null");
+        }
+    }
+
+    private long computeAdvisoryKey(long namespace, String lockKey) {
+        long keyHash = stableHash64(lockKey);
+        return (namespace << 32) ^ keyHash;
+    }
+
+    private long stableHash64(String lockKey) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(lockKey.getBytes(StandardCharsets.UTF_8));
+            return ByteBuffer.wrap(bytes).getLong();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("Algoritma hash SHA-256 tidak tersedia", ex);
         }
     }
 

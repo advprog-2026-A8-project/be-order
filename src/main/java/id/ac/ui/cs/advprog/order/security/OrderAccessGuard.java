@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.Optional;
 
 @Component("orderAccessGuard")
 @RequiredArgsConstructor
@@ -30,6 +31,37 @@ public class OrderAccessGuard {
 
     public boolean canCheckoutForRequestUser(Authentication authentication, OrderRequest orderRequest) {
         return orderRequest != null && isOwnerOfRequestedUser(authentication, orderRequest.getUserId());
+    }
+
+    public String resolveCheckoutUserId(Authentication authentication, String requestedUserId) {
+        if (requestedUserId == null || requestedUserId.isBlank()) {
+            throw new IllegalArgumentException("User ID request tidak boleh kosong");
+        }
+        if (!isOwner(authentication, requestedUserId)) {
+            throw new IllegalArgumentException("User tidak berhak melakukan checkout untuk userId tersebut");
+        }
+
+        String normalizedRequested = requestedUserId.trim();
+        Set<String> identityCandidates = extractIdentityCandidates(authentication);
+
+        Optional<String> exactMatch = identityCandidates.stream()
+                .filter(candidate -> candidate.equals(normalizedRequested))
+                .findFirst();
+        if (exactMatch.isPresent()) {
+            return exactMatch.get();
+        }
+
+        Optional<String> preferredUuidStyleIdentity = identityCandidates.stream()
+                .filter(candidate -> {
+                    try {
+                        java.util.UUID.fromString(candidate);
+                        return true;
+                    } catch (IllegalArgumentException ex) {
+                        return false;
+                    }
+                })
+                .findFirst();
+        return preferredUuidStyleIdentity.orElse(normalizedRequested);
     }
 
     public boolean canUpdateStatus(Authentication authentication, String orderId) {
