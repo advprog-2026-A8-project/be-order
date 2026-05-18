@@ -45,7 +45,7 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingSuccess() {
-        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+        adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4);
         verify(restTemplate).put(
                 eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
                 argThat(Objects::nonNull)
@@ -56,7 +56,7 @@ class ProfileRestAdapterTest {
     void submitRatingShouldSendAuthorizationHeaderAndStatsPayload() {
         ReflectionTestUtils.setField(adapter, "internalAuthorization", "Bearer test-admin-token");
 
-        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+        adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4);
 
         verify(restTemplate).put(
                 eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
@@ -71,7 +71,7 @@ class ProfileRestAdapterTest {
                     }
 
                     return "Bearer test-admin-token".equals(entity.getHeaders().getFirst("Authorization"))
-                            && Long.valueOf(10L).equals(payload.get("userId"))
+                            && "550e8400-e29b-41d4-a716-446655440000".equals(payload.get("userId").toString())
                             && Long.valueOf(1L).equals(payload.get("delta"));
                 })
         );
@@ -83,7 +83,7 @@ class ProfileRestAdapterTest {
                 .when(restTemplate).put(anyString(), any());
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
     }
 
     @Test
@@ -92,7 +92,7 @@ class ProfileRestAdapterTest {
                 .doNothing()
                 .when(restTemplate).put(anyString(), any());
 
-        adapter.submitRating("o1", "1", "10", "p1", 5, 4);
+        adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4);
 
         verify(restTemplate, times(2)).put(anyString(), any());
     }
@@ -104,17 +104,25 @@ class ProfileRestAdapterTest {
                 .when(restTemplate).put(anyString(), any());
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
     }
 
     @Test
     void submitRatingShouldThrowWhenJastiperIdInvalid() {
         assertThrows(IllegalArgumentException.class, () ->
-                adapter.submitRating("o1", "1", "not-number", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "not-uuid", "p1", 5, 4));
     }
 
     @Test
-    void submitRatingShouldThrowWhenJastiperIdNotPositive() {
+    void submitRatingShouldThrowWhenJastiperIdNullOrBlank() {
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", null, "p1", 5, 4));
+        assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "   ", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldThrowWhenJastiperIdNotUuid() {
         assertThrows(IllegalArgumentException.class, () ->
                 adapter.submitRating("o1", "1", "0", "p1", 5, 4));
         assertThrows(IllegalArgumentException.class, () ->
@@ -126,7 +134,7 @@ class ProfileRestAdapterTest {
         ReflectionTestUtils.setField(adapter, "internalAuthorization", "   ");
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
         verify(restTemplate, never()).put(anyString(), any());
     }
 
@@ -135,7 +143,7 @@ class ProfileRestAdapterTest {
         ReflectionTestUtils.setField(adapter, "internalAuthorization", "internal-order-service");
 
         assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
         verify(restTemplate, never()).put(anyString(), any());
     }
 
@@ -144,7 +152,7 @@ class ProfileRestAdapterTest {
         ReflectionTestUtils.setField(adapter, "maxAttempts", 0);
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
-                adapter.submitRating("o1", "1", "10", "p1", 5, 4));
+                adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
         assertTrue(exception.getMessage().contains("max-attempts"));
         verify(restTemplate, never()).put(anyString(), any());
     }

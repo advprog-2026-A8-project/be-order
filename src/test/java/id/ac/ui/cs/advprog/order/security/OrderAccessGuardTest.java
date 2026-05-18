@@ -1,16 +1,38 @@
 package id.ac.ui.cs.advprog.order.security;
 
 import id.ac.ui.cs.advprog.order.dto.OrderRequest;
+import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+import java.time.Instant;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class OrderAccessGuardTest {
 
-    private final OrderAccessGuard guard = new OrderAccessGuard();
+    @Mock
+    private OrderRepository orderRepository;
+
+    @InjectMocks
+    private OrderAccessGuard guard;
 
     @Test
     void isOwnerShouldReturnTrueWhenAuthenticationNameMatchesUserId() {
@@ -22,6 +44,14 @@ class OrderAccessGuardTest {
     void isOwnerShouldReturnFalseWhenAuthenticationNameDiffers() {
         Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
         assertFalse(guard.isOwner(auth, "user-2"));
+    }
+
+    @Test
+    void isOwnerShouldReturnFalseWhenAuthenticationOrUserIdInvalid() {
+        Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
+        assertFalse(guard.isOwner(null, "user-1"));
+        assertFalse(guard.isOwner(auth, null));
+        assertFalse(guard.isOwner(auth, "   "));
     }
 
     @Test
@@ -42,5 +72,131 @@ class OrderAccessGuardTest {
         request.setUserId("user-2");
         assertFalse(guard.canCheckoutForRequestUser(auth, request));
         assertFalse(guard.canCheckoutForRequestUser(auth, null));
+    }
+
+    @Test
+    void canUpdateStatusShouldReturnTrueForOwnerJastiper() {
+        Authentication auth = new TestingAuthenticationToken("jastiper-1", "n/a");
+        Order order = new Order();
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertTrue(guard.canUpdateStatus(auth, "order-1"));
+    }
+
+    @Test
+    void canUpdateStatusShouldReturnFalseForNonOwnerOrMissingOrder() {
+        Authentication auth = new TestingAuthenticationToken("jastiper-2", "n/a");
+        Order order = new Order();
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertFalse(guard.canUpdateStatus(auth, "order-1"));
+        assertFalse(guard.canUpdateStatus(auth, "missing"));
+        assertFalse(guard.canUpdateStatus(auth, " "));
+        assertFalse(guard.canUpdateStatus(null, "order-1"));
+    }
+
+    @Test
+    void isOwnerShouldUseJwtUserIdClaimWhenAvailable() {
+        String userId = "550e8400-e29b-41d4-a716-446655440000";
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "user@example.com", "userId", userId)
+        );
+        Authentication auth = new JwtAuthenticationToken(jwt);
+
+        assertTrue(guard.isOwner(auth, userId));
+        assertEquals(userId, guard.resolveCheckoutUserId(auth, userId));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldPreferUuidIdentityWhenRequestMatches() {
+        String userId = UUID.randomUUID().toString();
+        Jwt jwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "user@example.com", "userId", userId)
+        );
+        Authentication auth = new JwtAuthenticationToken(jwt);
+
+        assertEquals(userId, guard.resolveCheckoutUserId(auth, userId));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldRejectBlankOrUnauthorizedRequestUser() {
+        Authentication auth = new TestingAuthenticationToken("user-1", "n/a");
+
+        assertThrows(IllegalArgumentException.class, () -> guard.resolveCheckoutUserId(auth, " "));
+        assertThrows(IllegalArgumentException.class, () -> guard.resolveCheckoutUserId(auth, "user-2"));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldFallbackToUuidCandidateWhenNoExactMatchOnSecondExtraction() {
+        String uuidCandidate = UUID.randomUUID().toString();
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("user-1", uuidCandidate);
+
+        assertEquals(uuidCandidate, guard.resolveCheckoutUserId(auth, "user-1"));
+    }
+
+    @Test
+    void resolveCheckoutUserIdShouldFallbackToRequestedWhenNoExactMatchAndNoUuidCandidate() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("user-1", "other-identity");
+
+        assertEquals("user-1", guard.resolveCheckoutUserId(auth, "user-1"));
+    }
+
+    @Test
+    void isOwnerShouldAcceptJwtEmailAndIdClaims() {
+        Jwt emailJwt = new Jwt(
+                "token",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "sub-value", "email", "mail@example.com")
+        );
+        Jwt idJwt = new Jwt(
+                "token-2",
+                Instant.now(),
+                Instant.now().plusSeconds(300),
+                Map.of("alg", "none"),
+                Map.of("sub", "sub-value", "id", "internal-id-1")
+        );
+
+        assertTrue(guard.isOwner(new JwtAuthenticationToken(emailJwt), "mail@example.com"));
+        assertTrue(guard.isOwner(new JwtAuthenticationToken(idJwt), "internal-id-1"));
+    }
+
+    @Test
+    void canReadOrderShouldReturnTrueForTitiperOwnerOrJastiperOwner() {
+        Order order = new Order();
+        order.setUserId("titiper-1");
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertTrue(guard.canReadOrder(new TestingAuthenticationToken("titiper-1", "n/a"), "order-1"));
+        assertTrue(guard.canReadOrder(new TestingAuthenticationToken("jastiper-1", "n/a"), "order-1"));
+    }
+
+    @Test
+    void canReadOrderShouldReturnFalseForNonOwnerOrInvalidInput() {
+        Order order = new Order();
+        order.setUserId("titiper-1");
+        order.setJastiperId("jastiper-1");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertFalse(guard.canReadOrder(new TestingAuthenticationToken("other", "n/a"), "order-1"));
+        assertFalse(guard.canReadOrder(new TestingAuthenticationToken("other", "n/a"), "missing"));
+        assertFalse(guard.canReadOrder(new TestingAuthenticationToken("other", "n/a"), " "));
+        assertFalse(guard.canReadOrder(null, "order-1"));
     }
 }

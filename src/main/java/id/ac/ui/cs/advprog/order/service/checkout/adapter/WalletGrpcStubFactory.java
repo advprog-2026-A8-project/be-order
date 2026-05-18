@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 public class WalletGrpcStubFactory {
     private static final String ADAPTER_NAME = "Wallet-gRPC";
     private static final String HEADER_SERVICE_TOKEN = "x-service-token";
+    private static final String BEARER_PREFIX = "Bearer ";
 
     @Value("${order.wallet.grpc.host:localhost}")
     private String grpcHost;
@@ -36,10 +37,10 @@ public class WalletGrpcStubFactory {
 
     public WalletContractServiceGrpc.WalletContractServiceBlockingStub createStub() {
         String normalizedToken = AdapterConfigValidator.validateAndNormalizeBearerToken(
-                "Bearer " + normalizeTokenValue(internalToken),
+                BEARER_PREFIX + normalizeTokenValue(internalToken),
                 ADAPTER_NAME
         );
-        String tokenValue = normalizedToken.substring("Bearer ".length());
+        String tokenValue = normalizedToken.substring(BEARER_PREFIX.length());
         Metadata metadata = new Metadata();
         metadata.put(Metadata.Key.of(HEADER_SERVICE_TOKEN, Metadata.ASCII_STRING_MARSHALLER), tokenValue);
 
@@ -55,6 +56,25 @@ public class WalletGrpcStubFactory {
     }
 
     private String normalizeTokenValue(String token) {
-        return token == null ? "" : token.trim();
+        if (token == null) {
+            return "";
+        }
+
+        String normalized = token.trim();
+        if (normalized.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
+            normalized = normalized.substring(BEARER_PREFIX.length()).trim();
+        }
+
+        if (hasWrappingQuote(normalized)) {
+            normalized = normalized.substring(1, normalized.length() - 1).trim();
+        }
+
+        return normalized;
+    }
+
+    private boolean hasWrappingQuote(String token) {
+        return token.length() >= 2
+                && ((token.startsWith("\"") && token.endsWith("\""))
+                || (token.startsWith("'") && token.endsWith("'")));
     }
 }

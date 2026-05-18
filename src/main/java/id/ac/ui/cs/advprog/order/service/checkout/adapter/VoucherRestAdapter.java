@@ -20,6 +20,9 @@ import java.util.Map;
 public class VoucherRestAdapter implements VoucherGateway {
     private static final String VALIDATE_PATH = "validate";
     private static final String USE_PATH = "use";
+    private static final String ADMIN_PATH = "admin";
+    private static final String UPDATE_PATH = "update";
+    private static final String KEY_ADDITIONAL_QUOTA = "additionalQuota";
     private static final String KEY_CODE = "code";
     private static final String KEY_AMOUNT = "amount";
     private static final String KEY_VALID = "valid";
@@ -68,6 +71,17 @@ public class VoucherRestAdapter implements VoucherGateway {
         );
     }
 
+    @Override
+    public void restoreVoucher(String voucherCode) {
+        callWithRetry(() ->
+                restTemplate.patchForObject(
+                        buildVoucherUrl(ADMIN_PATH, UPDATE_PATH, voucherCode),
+                        buildJsonRequest(Map.of(KEY_ADDITIONAL_QUOTA, 1)),
+                        Map.class
+                )
+        );
+    }
+
     private Map<String, Object> callWithRetry(ThrowingSupplier<Map<String, Object>> requestSupplier) {
         AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
         ResourceAccessException lastTransientError = null;
@@ -99,6 +113,12 @@ public class VoucherRestAdapter implements VoucherGateway {
     private String buildVoucherUrl(String pathSegment) {
         return UriComponentsBuilder.fromUriString(voucherUrl)
                 .pathSegment(pathSegment)
+                .toUriString();
+    }
+
+    private String buildVoucherUrl(String pathSegment1, String pathSegment2, String pathSegment3) {
+        return UriComponentsBuilder.fromUriString(voucherUrl)
+                .pathSegment(pathSegment1, pathSegment2, pathSegment3)
                 .toUriString();
     }
 

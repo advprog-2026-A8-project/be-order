@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import id.ac.ui.cs.advprog.order.dto.AdminOrderSummaryResponse;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.security.OrderAccessGuard;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -38,11 +40,16 @@ class OrderControllerTest {
 
     @MockitoBean
     private OrderService orderService;
+    @MockitoBean
+    private OrderAccessGuard orderAccessGuard;
 
     private Order order;
 
     @BeforeEach
     void setUp() {
+        lenient().when(orderAccessGuard.resolveCheckoutUserId(any(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
         order = new Order();
         order.setId("order-123");
         order.setProductId("prod-abc");

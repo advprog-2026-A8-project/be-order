@@ -5,12 +5,14 @@ import id.ac.ui.cs.advprog.order.dto.OrderRequest;
 import id.ac.ui.cs.advprog.order.dto.RatingRequest;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import id.ac.ui.cs.advprog.order.model.Order;
+import id.ac.ui.cs.advprog.order.security.OrderAccessGuard;
 import id.ac.ui.cs.advprog.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,18 +27,21 @@ public class OrderController {
             "Idempotency-Key melebihi panjang maksimum 128 karakter";
 
     private final OrderService orderService;
+    private final OrderAccessGuard orderAccessGuard;
 
     @PostMapping("/checkout")
     @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.canCheckoutForRequestUser(authentication, #orderRequest)")
     public ResponseEntity<Order> checkout(
             @Valid @RequestBody OrderRequest orderRequest,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication
     ) {
         String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        String effectiveUserId = orderAccessGuard.resolveCheckoutUserId(authentication, orderRequest.getUserId());
 
         Order order = new Order();
         order.setProductId(orderRequest.getProductId());
-        order.setUserId(orderRequest.getUserId());
+        order.setUserId(effectiveUserId);
         order.setJastiperId(orderRequest.getJastiperId());
         order.setJumlah(orderRequest.getJumlah());
         order.setAlamatPengiriman(orderRequest.getAlamatPengiriman());
@@ -63,12 +68,14 @@ public class OrderController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<Order>> getAllOrders() {
         List<Order> orders = orderService.findAllOrders();
         return ResponseEntity.ok(orders);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or @orderAccessGuard.canReadOrder(authentication, #id)")
     public ResponseEntity<Order> getOrderById(@PathVariable String id) {
         Order order = orderService.findOrderById(id);
         if (order == null) {
@@ -78,6 +85,7 @@ public class OrderController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('JASTIPER') and @orderAccessGuard.canUpdateStatus(authentication, #id))")
     public ResponseEntity<Order> updateOrderStatus(@PathVariable String id, @RequestParam String status) {
         Order updatedOrder = orderService.updateOrderStatus(id, status);
         return toOrderResponse(updatedOrder);

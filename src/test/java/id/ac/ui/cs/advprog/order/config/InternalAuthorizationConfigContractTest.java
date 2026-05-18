@@ -12,12 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InternalAuthorizationConfigContractTest {
 
     private static final String PROFILE_PROP =
-            "order.profile.internal-authorization=${ORDER_PROFILE_INTERNAL_AUTHORIZATION:Bearer ";
+            "order.profile.internal-authorization=${ORDER_PROFILE_INTERNAL_AUTHORIZATION:}";
     private static final String WALLET_PROP =
             "order.wallet.internal-authorization=${ORDER_WALLET_INTERNAL_AUTHORIZATION:Bearer ";
 
     @Test
-    void applicationPropertiesShouldUseBearerDefaultsForInternalAuth() throws IOException {
+    void applicationPropertiesShouldDefineInternalAuthProperties() throws IOException {
         String content = Files.readString(Path.of("src/main/resources/application.properties"));
 
         assertTrue(content.contains(PROFILE_PROP));

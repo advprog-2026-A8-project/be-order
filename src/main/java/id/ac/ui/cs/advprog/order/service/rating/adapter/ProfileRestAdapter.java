@@ -14,6 +14,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -21,8 +22,8 @@ public class ProfileRestAdapter implements ProfileGateway {
     private static final long SUCCESSFUL_TRANSACTION_DELTA = 1L;
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String ADAPTER_NAME = "Profile";
-    private static final String MESSAGE_INVALID_JASTIPER_ID_POSITIVE =
-            "ID jastiper harus berupa angka positif.";
+    private static final String MESSAGE_INVALID_JASTIPER_ID_UUID =
+            "ID jastiper harus berformat UUID valid.";
 
     private final RestTemplate restTemplate;
 
@@ -54,8 +55,8 @@ public class ProfileRestAdapter implements ProfileGateway {
             try {
                 restTemplate.put(statsUrl, buildStatsRequest(jastiperId, authorizationToken));
                 return;
-            } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("ID jastiper tidak valid untuk update statistik.", ex);
             } catch (HttpClientErrorException ex) {
                 throw new IllegalStateException("Gagal mengirim rating ke Profile module", ex);
             } catch (ResourceAccessException ex) {
@@ -66,7 +67,7 @@ public class ProfileRestAdapter implements ProfileGateway {
     }
 
     private Map<String, Object> buildStatsPayload(String jastiperId) {
-        long parsedJastiperId = parsePositiveJastiperId(jastiperId);
+        UUID parsedJastiperId = parseJastiperUuid(jastiperId);
         return Map.of(
                 "userId", parsedJastiperId,
                 "delta", SUCCESSFUL_TRANSACTION_DELTA
@@ -84,12 +85,15 @@ public class ProfileRestAdapter implements ProfileGateway {
         return AdapterConfigValidator.validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
     }
 
-    private long parsePositiveJastiperId(String jastiperId) {
-        long parsed = Long.parseLong(jastiperId);
-        if (parsed <= 0) {
-            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID_POSITIVE);
+    private UUID parseJastiperUuid(String jastiperId) {
+        if (jastiperId == null || jastiperId.isBlank()) {
+            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID_UUID);
         }
-        return parsed;
+        try {
+            return UUID.fromString(jastiperId.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID_UUID, ex);
+        }
     }
 
 }

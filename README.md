@@ -1,4 +1,53 @@
-﻿# BE Order
+﻿# C4 Model of the Current Architecture
+
+## Context Diagram
+
+![alt text](assets/ContextDiagram.png)
+
+## Container Diagram
+
+![alt text](assets/ContainerDiagram.png)
+
+## Deployment Diagram
+
+![alt text](assets/DeploymentDiagram.png)
+
+## Risk Analysis & Architecture Modification
+
+![alt text](assets/RiskStormingMatrix.png)
+![alt text](assets/ModifiedArchitectureDiagram.png)
+
+### Refleksi Risk Storming
+
+Risk Storming diterapkan karena arsitektur saat ini tidak lagi cukup dinilai hanya dari sisi kelengkapan fitur, tetapi juga harus dilihat dari sisi risiko operasional jangka panjang. Ketika JSON berkembang dan digunakan dalam skala yang lebih besar, perhatian utama arsitektur bergeser ke aspek skalabilitas, konsistensi data, ketahanan sistem, dan observability pada banyak service yang saling terhubung.
+
+Teknik ini membantu tim mengidentifikasi risiko secara sistematis berdasarkan kemungkinan terjadinya dan besar dampaknya, bukan hanya berdasarkan intuisi. Dengan memetakan risiko seperti overselling saat war, inkonsistensi antarservice, bottleneck pada Order Service, dan keterbatasan observability ke dalam matriks likelihood-impact, tim dapat memprioritaskan masalah yang paling penting untuk keberlanjutan sistem.
+
+Risk Storming juga bermanfaat karena menghubungkan diskusi arsitektur dengan keputusan desain yang konkret. Hasil akhirnya bukan hanya daftar risiko, tetapi juga usulan future architecture yang lebih jelas, termasuk penambahan API Gateway, reservation cache untuk kontrol flash sale, event bus untuk menjaga konsistensi berbasis saga, serta dukungan observability dan audit yang lebih kuat.
+
+# Individu (Derrick)
+## Component Diagram
+
+![alt text](assets/ComponentDiagram.png)
+
+## Code Diagram
+
+![alt text](assets/CodeDiagram.png)
+
+## Profiling
+
+![]()
+
+![]()
+
+## Monitoring
+
+![]()
+
+![]()
+
+
+# BE Order
 PIC: Derrick - 2406351440
 
 Backend service untuk orkestrasi transaksi order pada sistem JaStip Online Nasional (JSON): checkout, lifecycle status order, cancel + refund trigger, rating submission, history/monitoring, serta integrasi lintas service (inventory, wallet, voucher, profile).
@@ -38,16 +87,19 @@ Base path: `/api/orders`
 - `GET /api/orders/admin/summary`
 
 ## External Contract Integration
-Service ini memakai HTTP integration ke modul lain:
+Service ini memakai kombinasi HTTP + gRPC:
 
-- Inventory: `${ORDER_INVENTORY_URL}`
-- Wallet Contract API: `${ORDER_WALLET_URL}`
-  - `POST /check-balance`
-  - `POST /deduct`
-  - `POST /refund`
+- Inventory (HTTP): `${ORDER_INVENTORY_URL}`
+  - `POST /{id}/reserve?quantity=...`
+  - `PUT /update/{id}` (untuk kompensasi release stock saat cancel/failure)
+- Wallet Contract (gRPC): `${ORDER_WALLET_GRPC_HOST}:${ORDER_WALLET_GRPC_PORT}`
+  - `checkBalance`
+  - `deductBalance`
+  - `refundBalance`
 - Voucher API: `${ORDER_VOUCHER_URL}`
   - `POST /validate`
   - `POST /use`
+  - `PATCH /admin/update/{code}` (restore quota untuk kompensasi)
 - Profile: `${ORDER_PROFILE_URL}`
 
 ## Database & Migration
@@ -57,6 +109,8 @@ Service ini memakai HTTP integration ke modul lain:
   - `V1__init_order_schema.sql`
   - `V2__add_owner_status_indexes.sql`
   - `V3__add_idempotency_order_fk.sql`
+  - `V4__add_voucher_code_column.sql`
+  - `V5__add_voucher_applied_column.sql`
 
 ## Configuration
 Copy `env.example` menjadi `.env`, lalu isi value sesuai environment.
@@ -71,11 +125,15 @@ Variabel utama:
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `ORDER_INVENTORY_URL`
-- `ORDER_WALLET_URL`
-- `ORDER_WALLET_INTERNAL_AUTHORIZATION`
+- `ORDER_INVENTORY_INTERNAL_ROLE`
+- `ORDER_INVENTORY_INTERNAL_USER_ID`
+- `ORDER_WALLET_GRPC_HOST`
+- `ORDER_WALLET_GRPC_PORT`
+- `GRPC_SERVER_INTERNAL_TOKEN`
 - `ORDER_VOUCHER_URL`
 - `ORDER_PROFILE_URL`
 - `ORDER_PROFILE_INTERNAL_AUTHORIZATION`
+- `ORDER_SECURITY_PRINCIPAL_CLAIM`
 
 ## Run with Docker Compose
 Menjalankan app + PostgreSQL untuk local testing dengan profile:

@@ -6,10 +6,14 @@ import id.ac.ui.cs.advprog.order.exception.InvalidOrderTransitionException;
 import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.model.state.OrderStateMachine;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
+import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
+import id.ac.ui.cs.advprog.order.service.checkout.CheckoutLockManager;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
+import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,15 +22,29 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
-    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper tidak valid untuk update statistik.";
+    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper harus UUID valid untuk update statistik.";
     private static final String CANCEL_REFUND_IDEMPOTENCY_PREFIX = "cancel-refund-";
+    private static final String CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX = "cancel-rollback-debit-";
+    private static final String CANCEL_RESERVE_ROLLBACK_REASON =
+            "Cancel gagal; stok sudah direlease sehingga dicoba reserve ulang.";
+    private static final String CANCEL_VOUCHER_ROLLBACK_REASON =
+            "Cancel gagal; voucher sudah direstore sehingga dicoba dipakai ulang.";
+    private static final String MESSAGE_CANCEL_COMPENSATION_PARTIAL_FAILURE =
+            "Cancel order gagal diproses penuh karena ada kegagalan kompensasi.";
+    private static final String MESSAGE_PROFILE_SYNC_FAILED =
+            "Rating tersimpan, tetapi sinkronisasi statistik profile gagal. Perlu sinkronisasi manual.";
+    private static final String MESSAGE_PROFILE_SYNC_FAILED_ROLLBACK =
+            "Sinkronisasi rating ke profile gagal dan rollback rating lokal juga gagal.";
+    private static final String RATING_LOCK_PREFIX = "rating-lock:";
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
 
@@ -34,7 +52,10 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStateMachine orderStateMachine;
     private final OrderCheckoutFacade orderCheckoutFacade;
     private final WalletGateway walletGateway;
+    private final InventoryGateway inventoryGateway;
+    private final VoucherGateway voucherGateway;
     private final ProfileGateway profileGateway;
+    private final CheckoutLockManager checkoutLockManager;
 
     private static final List<OrderStatus> ACTIVE_STATUSES = List.of(
             OrderStatus.PENDING,
@@ -70,18 +91,19 @@ public class OrderServiceImpl implements OrderService {
     public Order updateOrderStatus(String id, String status) {
         Order order = findOrderById(id);
         if (order != null) {
+            OrderStatus newStatus;
             try {
-                OrderStatus newStatus = OrderStatus.valueOf(status.toUpperCase());
-                if (!orderStateMachine.isValidTransition(order.getStatus(), newStatus)) {
-                    throw new InvalidOrderTransitionException(
-                            String.format("Invalid transition: %s -> %s", order.getStatus(), newStatus)
-                    );
-                }
-                order.setStatus(newStatus);
-                return orderRepository.save(order);
+                newStatus = OrderStatus.valueOf(status.toUpperCase());
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Invalid status: " + status);
             }
+            if (!orderStateMachine.isValidTransition(order.getStatus(), newStatus)) {
+                throw new InvalidOrderTransitionException(
+                        String.format("Invalid transition: %s -> %s", order.getStatus(), newStatus)
+                );
+            }
+            order.setStatus(newStatus);
+            return orderRepository.save(order);
         }
         return null;
     }
@@ -101,15 +123,153 @@ public class OrderServiceImpl implements OrderService {
             );
         }
 
-        double refundAmount = order.getTotalAmount() == null ? 0.0 : order.getTotalAmount();
-        walletGateway.refund(
-                order.getUserId(),
-                order.getId(),
-                refundAmount,
-                CANCEL_REFUND_IDEMPOTENCY_PREFIX + order.getId()
-        );
-        order.setStatus(OrderStatus.CANCELLED);
-        return orderRepository.save(order);
+        return checkoutLockManager.withProductLock(order.getProductId(), () -> {
+            double refundAmount = order.getTotalAmount() == null ? 0.0 : order.getTotalAmount();
+            CompensationAttempt refundAttempt = tryRefund(order, refundAmount);
+            CompensationAttempt releaseAttempt = tryRelease(order);
+            CompensationAttempt restoreAttempt = hasRestorableVoucher(order)
+                    ? tryRestoreVoucher(order)
+                    : CompensationAttempt.skipped();
+
+            if (hasFailure(refundAttempt, releaseAttempt, restoreAttempt)) {
+                RollbackAttempt rollbackAttempt = rollbackCancellation(
+                        order,
+                        refundAmount,
+                        refundAttempt,
+                        releaseAttempt,
+                        restoreAttempt
+                );
+                throw buildCompensationFailure(
+                        refundAttempt,
+                        releaseAttempt,
+                        restoreAttempt,
+                        rollbackAttempt
+                );
+            }
+
+            order.setStatus(OrderStatus.CANCELLED);
+            return orderRepository.save(order);
+        });
+    }
+
+    private CompensationAttempt tryRefund(Order order, double refundAmount) {
+        try {
+            walletGateway.refund(
+                    order.getUserId(),
+                    order.getId(),
+                    refundAmount,
+                    CANCEL_REFUND_IDEMPOTENCY_PREFIX + order.getId()
+            );
+            return CompensationAttempt.success();
+        } catch (RuntimeException ex) {
+            return CompensationAttempt.failure(ex);
+        }
+    }
+
+    private CompensationAttempt tryRelease(Order order) {
+        try {
+            inventoryGateway.releaseStock(order.getProductId(), order.getJumlah());
+            return CompensationAttempt.success();
+        } catch (RuntimeException ex) {
+            return CompensationAttempt.failure(ex);
+        }
+    }
+
+    private CompensationAttempt tryRestoreVoucher(Order order) {
+        try {
+            voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+            return CompensationAttempt.success();
+        } catch (RuntimeException ex) {
+            return CompensationAttempt.failure(ex);
+        }
+    }
+
+    private boolean hasRestorableVoucher(Order order) {
+        return Boolean.TRUE.equals(order.getVoucherApplied())
+                && order.getVoucherCode() != null
+                && !order.getVoucherCode().isBlank();
+    }
+
+    private boolean hasFailure(CompensationAttempt refund, CompensationAttempt release, CompensationAttempt restore) {
+        return refund.hasFailure() || release.hasFailure() || restore.hasFailure();
+    }
+
+    private RollbackAttempt rollbackCancellation(
+            Order order,
+            double refundAmount,
+            CompensationAttempt refundAttempt,
+            CompensationAttempt releaseAttempt,
+            CompensationAttempt restoreAttempt
+    ) {
+        RuntimeException voucherRollbackFailure = rollbackVoucherIfNeeded(order, restoreAttempt);
+        RuntimeException inventoryRollbackFailure = rollbackInventoryIfNeeded(order, releaseAttempt);
+        RuntimeException walletRollbackFailure = rollbackWalletIfNeeded(order, refundAmount, refundAttempt);
+        return new RollbackAttempt(voucherRollbackFailure, inventoryRollbackFailure, walletRollbackFailure);
+    }
+
+    private RuntimeException rollbackVoucherIfNeeded(Order order, CompensationAttempt restoreAttempt) {
+        if (!restoreAttempt.wasSuccessful()) {
+            return null;
+        }
+        try {
+            voucherGateway.useVoucher(order.getVoucherCode().trim());
+            return null;
+        } catch (RuntimeException ex) {
+            log.warn(CANCEL_VOUCHER_ROLLBACK_REASON, ex);
+            return ex;
+        }
+    }
+
+    private RuntimeException rollbackInventoryIfNeeded(Order order, CompensationAttempt releaseAttempt) {
+        if (!releaseAttempt.wasSuccessful()) {
+            return null;
+        }
+        try {
+            inventoryGateway.reserveStock(order.getProductId(), order.getJumlah());
+            return null;
+        } catch (RuntimeException ex) {
+            log.warn(CANCEL_RESERVE_ROLLBACK_REASON, ex);
+            return ex;
+        }
+    }
+
+    private RuntimeException rollbackWalletIfNeeded(Order order, double refundAmount, CompensationAttempt refundAttempt) {
+        if (!refundAttempt.wasSuccessful()) {
+            return null;
+        }
+        try {
+            walletGateway.debit(
+                    order.getUserId(),
+                    order.getId(),
+                    refundAmount,
+                    CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX + order.getId()
+            );
+            return null;
+        } catch (RuntimeException ex) {
+            return ex;
+        }
+    }
+
+    private IllegalStateException buildCompensationFailure(
+            CompensationAttempt refundAttempt,
+            CompensationAttempt releaseAttempt,
+            CompensationAttempt restoreAttempt,
+            RollbackAttempt rollbackAttempt
+    ) {
+        IllegalStateException wrapped = new IllegalStateException(MESSAGE_CANCEL_COMPENSATION_PARTIAL_FAILURE);
+        addSuppressedIfPresent(wrapped, refundAttempt.failure());
+        addSuppressedIfPresent(wrapped, releaseAttempt.failure());
+        addSuppressedIfPresent(wrapped, restoreAttempt.failure());
+        addSuppressedIfPresent(wrapped, rollbackAttempt.voucherRollbackFailure());
+        addSuppressedIfPresent(wrapped, rollbackAttempt.inventoryRollbackFailure());
+        addSuppressedIfPresent(wrapped, rollbackAttempt.walletRollbackFailure());
+        return wrapped;
+    }
+
+    private void addSuppressedIfPresent(IllegalStateException wrapped, RuntimeException failure) {
+        if (failure != null) {
+            wrapped.addSuppressed(failure);
+        }
     }
 
     @Override
@@ -243,35 +403,65 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating) {
-        Order order = findOrderById(orderId);
-        if (order == null) {
-            return null;
-        }
-        if (!userId.equals(order.getUserId())) {
-            throw new IllegalArgumentException("User tidak berhak memberi rating untuk order ini");
-        }
-        if (order.getStatus() != OrderStatus.COMPLETED) {
-            throw new IllegalStateException("Rating hanya dapat diberikan setelah order completed");
-        }
-        if (Boolean.TRUE.equals(order.getRatingSubmitted())) {
-            throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
-        }
-        validateRatingRange(jastiperRating, productRating);
-        validateNumericJastiperId(order.getJastiperId());
+        String ratingLockKey = RATING_LOCK_PREFIX + orderId;
+        return checkoutLockManager.withIdempotencyLock(ratingLockKey, () -> {
+            Order order = findOrderById(orderId);
+            if (order == null) {
+                return null;
+            }
+            if (!userId.equals(order.getUserId())) {
+                throw new IllegalArgumentException("User tidak berhak memberi rating untuk order ini");
+            }
+            if (order.getStatus() != OrderStatus.COMPLETED) {
+                throw new IllegalStateException("Rating hanya dapat diberikan setelah order completed");
+            }
+            if (Boolean.TRUE.equals(order.getRatingSubmitted())) {
+                throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
+            }
+            validateRatingRange(jastiperRating, productRating);
+            validateJastiperUuid(order.getJastiperId());
 
-        profileGateway.submitRating(
-                order.getId(),
-                order.getUserId(),
-                order.getJastiperId(),
-                order.getProductId(),
-                jastiperRating,
-                productRating
-        );
+            order.setJastiperRating(jastiperRating);
+            order.setProductRating(productRating);
+            order.setRatingSubmitted(true);
+            Order savedOrder = orderRepository.save(order);
 
-        order.setJastiperRating(jastiperRating);
-        order.setProductRating(productRating);
-        order.setRatingSubmitted(true);
-        return orderRepository.save(order);
+            try {
+                profileGateway.submitRating(
+                        savedOrder.getId(),
+                        savedOrder.getUserId(),
+                        savedOrder.getJastiperId(),
+                        savedOrder.getProductId(),
+                        jastiperRating,
+                        productRating
+                );
+            } catch (RuntimeException ex) {
+                log.error(
+                        "submit_rating_profile_sync_failed orderId={} userId={} jastiperId={}",
+                        savedOrder.getId(),
+                        savedOrder.getUserId(),
+                        savedOrder.getJastiperId(),
+                        ex
+                );
+                throw rollbackRatingAndBuildException(savedOrder, ex);
+            }
+
+            return savedOrder;
+        });
+    }
+
+    private IllegalStateException rollbackRatingAndBuildException(Order savedOrder, RuntimeException profileSyncFailure) {
+        savedOrder.setJastiperRating(null);
+        savedOrder.setProductRating(null);
+        savedOrder.setRatingSubmitted(false);
+        try {
+            orderRepository.save(savedOrder);
+            return new IllegalStateException(MESSAGE_PROFILE_SYNC_FAILED, profileSyncFailure);
+        } catch (RuntimeException rollbackFailure) {
+            IllegalStateException wrapped = new IllegalStateException(MESSAGE_PROFILE_SYNC_FAILED_ROLLBACK, profileSyncFailure);
+            wrapped.addSuppressed(rollbackFailure);
+            return wrapped;
+        }
     }
 
     private void validateRatingRange(int jastiperRating, int productRating) {
@@ -280,14 +470,43 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private void validateNumericJastiperId(String jastiperId) {
+    private void validateJastiperUuid(String jastiperId) {
         if (jastiperId == null || jastiperId.isBlank()) {
             throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID);
         }
         try {
-            Long.parseLong(jastiperId);
-        } catch (NumberFormatException ex) {
+            UUID.fromString(jastiperId);
+        } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID, ex);
         }
+    }
+
+    private record CompensationAttempt(boolean successful, RuntimeException failure) {
+        static CompensationAttempt success() {
+            return new CompensationAttempt(true, null);
+        }
+
+        static CompensationAttempt failure(RuntimeException failure) {
+            return new CompensationAttempt(false, failure);
+        }
+
+        static CompensationAttempt skipped() {
+            return new CompensationAttempt(false, null);
+        }
+
+        boolean wasSuccessful() {
+            return successful;
+        }
+
+        boolean hasFailure() {
+            return failure != null;
+        }
+    }
+
+    private record RollbackAttempt(
+            RuntimeException voucherRollbackFailure,
+            RuntimeException inventoryRollbackFailure,
+            RuntimeException walletRollbackFailure
+    ) {
     }
 }

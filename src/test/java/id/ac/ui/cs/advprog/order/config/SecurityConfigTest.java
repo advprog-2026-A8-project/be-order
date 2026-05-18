@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import id.ac.ui.cs.advprog.order.security.RestAccessDeniedHandler;
 import id.ac.ui.cs.advprog.order.security.RestAuthenticationEntryPoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.List;
@@ -76,6 +77,33 @@ class SecurityConfigTest {
     @Test
     void jwtDecoderShouldBeCreated() {
         assertNotNull(securityConfig.jwtDecoder("0123456789abcdef0123456789abcdef"));
+    }
+
+    @Test
+    void jwtConverterShouldIgnoreBlankAndRolePrefixOnlyAuthorities() {
+        Jwt jwt = buildJwt(Map.of(
+                "roles", List.of("ADMIN", " ", "ROLE_")
+        ));
+
+        AbstractAuthenticationToken token = securityConfig.jwtAuthenticationConverter().convert(jwt);
+        Set<String> authorities = token.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("ROLE_ADMIN"), authorities);
+    }
+
+    @Test
+    void jwtConverterShouldFallbackToSubWhenPrincipalClaimNullOrBlank() {
+        Jwt jwt = buildJwt(Map.of("sub", "subject-user", "role", "ADMIN"));
+
+        ReflectionTestUtils.setField(securityConfig, "principalClaimName", null);
+        AbstractAuthenticationToken fromNull = securityConfig.jwtAuthenticationConverter().convert(jwt);
+        assertEquals("subject-user", fromNull.getName());
+
+        ReflectionTestUtils.setField(securityConfig, "principalClaimName", "   ");
+        AbstractAuthenticationToken fromBlank = securityConfig.jwtAuthenticationConverter().convert(jwt);
+        assertEquals("subject-user", fromBlank.getName());
     }
 
     private Jwt buildJwt(Map<String, Object> claims) {

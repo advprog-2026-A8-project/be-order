@@ -12,7 +12,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 @RequiredArgsConstructor
@@ -25,10 +24,14 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
     private static final String MESSAGE_IDEMPOTENCY_PAYLOAD_MISMATCH =
             "Idempotency key sudah digunakan untuk payload order yang berbeda";
-    private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE =
-            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund.";
-    private static final String MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED =
-            "Gagal mengurangi stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.";
+    private static final String MESSAGE_INVENTORY_RESERVE_FAILED_REFUND_DONE =
+            "Gagal reserve stok inventory, padahal saldo sudah terpotong. Dana direfund.";
+    private static final String MESSAGE_INVENTORY_RESERVE_FAILED_REFUND_FAILED =
+            "Gagal reserve stok inventory, padahal saldo sudah terpotong. Dana direfund gagal diproses.";
+    private static final String MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_DONE =
+            "Order gagal disimpan setelah debit wallet dan reserve stok. Kompensasi refund+release berhasil.";
+    private static final String MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_FAILED =
+            "Order gagal disimpan setelah debit wallet dan reserve stok. Kompensasi refund/release gagal.";
     private static final String DEFAULT_WALLET_IDEMPOTENCY_PREFIX = "wallet-order-";
     private static final String REFUND_SUFFIX = "-refund";
 
@@ -55,9 +58,7 @@ public class OrderCheckoutFacade {
     }
 
     private Order checkoutWithIdempotency(Order order, String idempotencyKey) {
-        ReentrantLock idempotencyLock = checkoutLockManager.getLockForIdempotencyKey(idempotencyKey);
-        idempotencyLock.lock();
-        try {
+        return checkoutLockManager.withIdempotencyLock(idempotencyKey, () -> {
             OrderIdempotency existingRecord = orderIdempotencyRepository.findById(idempotencyKey).orElse(null);
             if (existingRecord != null) {
                 Order existingOrder = orderRepository.findById(existingRecord.getOrderId())
@@ -77,15 +78,11 @@ public class OrderCheckoutFacade {
             } catch (DataIntegrityViolationException ex) {
                 return resolveRaceWinnerOrder(idempotencyKey, order, ex);
             }
-        } finally {
-            idempotencyLock.unlock();
-        }
+        });
     }
 
     private Order performCheckout(Order order, String idempotencyKey) {
-        ReentrantLock lock = checkoutLockManager.getLockForProduct(order.getProductId());
-        lock.lock();
-        try {
+        return checkoutLockManager.withProductLock(order.getProductId(), () -> {
             ensureOrderId(order);
             String walletIdempotencyKey = resolveWalletIdempotencyKey(order, idempotencyKey);
 
@@ -109,20 +106,24 @@ public class OrderCheckoutFacade {
             checkoutAuditLogger.logDebitSucceeded(order.getUserId(), totalPrice);
 
             try {
-                inventoryGateway.reduceStock(order.getProductId(), order.getJumlah());
+                inventoryGateway.reserveStock(order.getProductId(), order.getJumlah());
                 checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
-                throw handleInventoryReduceFailure(order, totalPrice, walletIdempotencyKey, ex);
+                throw handleInventoryReserveFailure(order, totalPrice, walletIdempotencyKey, ex);
             }
 
+            boolean voucherApplied = tryUseVoucher(order.getVoucherCode());
             order.setStatus(OrderStatus.PAID);
             order.setTotalAmount(totalPrice);
-            Order savedOrder = orderRepository.save(order);
-            tryUseVoucher(order.getVoucherCode());
+            order.setVoucherApplied(voucherApplied);
+            Order savedOrder;
+            try {
+                savedOrder = orderRepository.save(order);
+            } catch (RuntimeException ex) {
+                throw handleOrderSaveFailureAfterDebitAndReserve(order, totalPrice, walletIdempotencyKey, voucherApplied, ex);
+            }
             return savedOrder;
-        } finally {
-            lock.unlock();
-        }
+        });
     }
 
     private void validateOrderRequest(Order order) {
@@ -173,22 +174,24 @@ public class OrderCheckoutFacade {
         }
     }
 
-    private void tryUseVoucher(String voucherCode) {
+    private boolean tryUseVoucher(String voucherCode) {
         if (isBlank(voucherCode)) {
-            return;
+            return false;
         }
         try {
             voucherGateway.useVoucher(voucherCode.trim());
+            return true;
         } catch (RuntimeException ex) {
             checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VOUCHER_USE_FAILED_AFTER_CHECKOUT);
+            return false;
         }
     }
 
-    private IllegalStateException handleInventoryReduceFailure(
+    private IllegalStateException handleInventoryReserveFailure(
             Order order,
             double totalPrice,
             String walletIdempotencyKey,
-            RuntimeException inventoryException
+            RuntimeException reserveException
     ) {
         logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
 
@@ -200,18 +203,71 @@ public class OrderCheckoutFacade {
                     walletIdempotencyKey + REFUND_SUFFIX
             );
             return new IllegalStateException(
-                    MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_DONE,
-                    inventoryException
+                    MESSAGE_INVENTORY_RESERVE_FAILED_REFUND_DONE,
+                    reserveException
             );
         } catch (RuntimeException refundEx) {
             logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
             IllegalStateException wrapped = new IllegalStateException(
-                    MESSAGE_INVENTORY_REDUCE_FAILED_REFUND_FAILED,
-                    inventoryException
+                    MESSAGE_INVENTORY_RESERVE_FAILED_REFUND_FAILED,
+                    reserveException
             );
             wrapped.addSuppressed(refundEx);
             return wrapped;
         }
+    }
+
+    private IllegalStateException handleOrderSaveFailureAfterDebitAndReserve(
+            Order order,
+            double totalPrice,
+            String walletIdempotencyKey,
+            boolean voucherApplied,
+            RuntimeException orderSaveException
+    ) {
+        RuntimeException refundFailure = null;
+        RuntimeException releaseFailure = null;
+        RuntimeException voucherRestoreFailure = null;
+
+        logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_INVENTORY_REDUCE_FAILED);
+        try {
+            walletGateway.refund(order.getUserId(), order.getId(), totalPrice, walletIdempotencyKey + REFUND_SUFFIX);
+        } catch (RuntimeException ex) {
+            refundFailure = ex;
+        }
+
+        try {
+            inventoryGateway.releaseStock(order.getProductId(), order.getJumlah());
+        } catch (RuntimeException ex) {
+            releaseFailure = ex;
+        }
+
+        if (voucherApplied) {
+            try {
+                voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+            } catch (RuntimeException ex) {
+                voucherRestoreFailure = ex;
+            }
+        }
+
+        if (refundFailure == null && releaseFailure == null && voucherRestoreFailure == null) {
+            return new IllegalStateException(MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_DONE, orderSaveException);
+        }
+
+        logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
+        IllegalStateException wrapped = new IllegalStateException(
+                MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_FAILED,
+                orderSaveException
+        );
+        if (refundFailure != null) {
+            wrapped.addSuppressed(refundFailure);
+        }
+        if (releaseFailure != null) {
+            wrapped.addSuppressed(releaseFailure);
+        }
+        if (voucherRestoreFailure != null) {
+            wrapped.addSuppressed(voucherRestoreFailure);
+        }
+        return wrapped;
     }
 
     private void logRefundReason(Order order, double totalPrice, String reason) {
