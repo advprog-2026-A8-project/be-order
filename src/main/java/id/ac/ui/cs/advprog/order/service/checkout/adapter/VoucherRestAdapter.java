@@ -20,13 +20,11 @@ import java.util.Map;
 public class VoucherRestAdapter implements VoucherGateway {
     private static final String VALIDATE_PATH = "validate";
     private static final String USE_PATH = "use";
-    private static final String ADMIN_PATH = "admin";
-    private static final String UPDATE_PATH = "update";
-    private static final String KEY_ADDITIONAL_QUOTA = "additionalQuota";
     private static final String KEY_CODE = "code";
     private static final String KEY_AMOUNT = "amount";
     private static final String KEY_VALID = "valid";
     private static final String KEY_DISCOUNT_AMOUNT = "discountAmount";
+    private static final String HEADER_IDEMPOTENCY_KEY = "Idempotency-Key";
     private static final String ERROR_RETRY_EXHAUSTED = "Gagal mengakses Voucher service.";
     private static final String ERROR_INVALID_VOUCHER = "Voucher tidak valid atau tidak dapat digunakan.";
     private static final String ERROR_USE_VOUCHER = "Gagal menggunakan voucher.";
@@ -72,11 +70,15 @@ public class VoucherRestAdapter implements VoucherGateway {
     }
 
     @Override
-    public void restoreVoucher(String voucherCode) {
+    public void restoreVoucher(String voucherCode, String idempotencyKey) {
+        String normalizedIdempotencyKey = validateIdempotencyKey(idempotencyKey);
         callWithRetry(() ->
-                restTemplate.patchForObject(
-                        buildVoucherUrl(ADMIN_PATH, UPDATE_PATH, voucherCode),
-                        buildJsonRequest(Map.of(KEY_ADDITIONAL_QUOTA, 1)),
+                restTemplate.postForObject(
+                        buildVoucherUrl("restore"),
+                        buildJsonRequestWithIdempotency(
+                                Map.of(KEY_CODE, voucherCode),
+                                normalizedIdempotencyKey
+                        ),
                         Map.class
                 )
         );
@@ -110,15 +112,26 @@ public class VoucherRestAdapter implements VoucherGateway {
         return new HttpEntity<>(payload, headers);
     }
 
+    private HttpEntity<Map<String, Object>> buildJsonRequestWithIdempotency(
+            Map<String, Object> payload,
+            String idempotencyKey
+    ) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(HEADER_IDEMPOTENCY_KEY, idempotencyKey);
+        return new HttpEntity<>(payload, headers);
+    }
+
+    private String validateIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalStateException("Idempotency-Key untuk restore voucher wajib diisi.");
+        }
+        return idempotencyKey.trim();
+    }
+
     private String buildVoucherUrl(String pathSegment) {
         return UriComponentsBuilder.fromUriString(voucherUrl)
                 .pathSegment(pathSegment)
-                .toUriString();
-    }
-
-    private String buildVoucherUrl(String pathSegment1, String pathSegment2, String pathSegment3) {
-        return UriComponentsBuilder.fromUriString(voucherUrl)
-                .pathSegment(pathSegment1, pathSegment2, pathSegment3)
                 .toUriString();
     }
 

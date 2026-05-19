@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
@@ -112,16 +113,21 @@ class VoucherRestAdapterTest {
 
     @Test
     void restoreVoucherShouldCallAdminUpdateEndpoint() {
-        when(restTemplate.patchForObject(anyString(), any(), eq(Map.class)))
+        when(restTemplate.postForObject(anyString(), any(), eq(Map.class)))
                 .thenReturn(Map.of("success", true));
 
-        adapter.restoreVoucher("HEMAT10");
+        adapter.restoreVoucher("HEMAT10", "idem-restore-1");
 
-        verify(restTemplate).patchForObject(
-                eq("http://localhost:7002/api/vouchers/admin/update/HEMAT10"),
-                any(),
+        verify(restTemplate).postForObject(
+                eq("http://localhost:7002/api/vouchers/restore"),
+                any(HttpEntity.class),
                 eq(Map.class)
         );
+    }
+
+    @Test
+    void restoreVoucherShouldThrowWhenIdempotencyKeyBlank() {
+        assertThrows(IllegalStateException.class, () -> adapter.restoreVoucher("HEMAT10", "   "));
     }
 
     @Test

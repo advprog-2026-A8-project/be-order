@@ -33,6 +33,7 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_FAILED =
             "Order gagal disimpan setelah debit wallet dan reserve stok. Kompensasi refund/release gagal.";
     private static final String DEFAULT_WALLET_IDEMPOTENCY_PREFIX = "wallet-order-";
+    private static final String VOUCHER_RESTORE_IDEMPOTENCY_PREFIX = "checkout-restore-voucher-";
     private static final String REFUND_SUFFIX = "-refund";
 
     private final InventoryGateway inventoryGateway;
@@ -243,7 +244,10 @@ public class OrderCheckoutFacade {
 
         if (voucherApplied) {
             try {
-                voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+                voucherGateway.restoreVoucher(
+                        order.getVoucherCode().trim(),
+                        VOUCHER_RESTORE_IDEMPOTENCY_PREFIX + order.getId()
+                );
             } catch (RuntimeException ex) {
                 voucherRestoreFailure = ex;
             }

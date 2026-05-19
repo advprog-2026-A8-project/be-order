@@ -2,6 +2,7 @@ package id.ac.ui.cs.advprog.order.service.checkout.adapter;
 
 import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
+import id.ac.ui.cs.advprog.order.service.common.AdapterConfigValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -14,16 +15,13 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.Map;
-
 @Component
 @RequiredArgsConstructor
 public class InventoryRestAdapter implements InventoryGateway {
-    private static final String UPDATE_PATH = "update";
     private static final String RESERVE_PATH = "reserve";
-    private static final String DEFAULT_STRING = "";
-    private static final String HEADER_USER_ROLE = "X-User-Role";
-    private static final String HEADER_USER_ID = "X-User-Id";
+    private static final String RELEASE_PATH = "release";
+    private static final String HEADER_AUTHORIZATION = "Authorization";
+    private static final String ADAPTER_NAME = "Inventory";
 
     private final RestTemplate restTemplate;
 
@@ -33,15 +31,12 @@ public class InventoryRestAdapter implements InventoryGateway {
     @Value("${order.http.retry.max-attempts:2}")
     private int maxAttempts;
 
-    @Value("${order.inventory.internal-role:ADMIN}")
-    private String inventoryInternalRole;
-
-    @Value("${order.inventory.internal-user-id:order-service}")
-    private String inventoryInternalUserId;
+    @Value("${order.inventory.internal-authorization:}")
+    private String internalAuthorization;
 
     @Override
     public InventoryResponse getProduct(String productId) {
-        validateRetryConfiguration();
+        AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
         return getProductWithRetry(productId);
     }
 
@@ -63,12 +58,19 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void reserveStock(String productId, int quantity) {
-        validateRetryConfiguration();
+        AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
+        String authorizationToken = AdapterConfigValidator
+                .validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
         String reserveStockUrl = buildReserveStockUrl(productId, quantity);
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                restTemplate.postForObject(reserveStockUrl, null, String.class);
+                restTemplate.exchange(
+                        reserveStockUrl,
+                        HttpMethod.POST,
+                        buildMutationRequest(authorizationToken),
+                        Void.class
+                );
                 return;
             } catch (HttpClientErrorException e) {
                 throw new IllegalStateException("Stok inventory tidak mencukupi.", e);
@@ -81,17 +83,17 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void releaseStock(String productId, int quantity) {
-        validateRetryConfiguration();
-        InventoryResponse currentProduct = getProductWithRetry(productId);
-        int updatedStock = resolveStock(currentProduct) + quantity;
-        String updateProductUrl = buildUpdateProductUrl(productId);
+        AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
+        String authorizationToken = AdapterConfigValidator
+                .validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
+        String releaseStockUrl = buildReleaseStockUrl(productId, quantity);
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 restTemplate.exchange(
-                        updateProductUrl,
-                        HttpMethod.PUT,
-                        buildUpdateRequest(currentProduct, updatedStock),
+                        releaseStockUrl,
+                        HttpMethod.POST,
+                        buildMutationRequest(authorizationToken),
                         Void.class
                 );
                 return;
@@ -104,46 +106,11 @@ public class InventoryRestAdapter implements InventoryGateway {
         throw new IllegalStateException("Gagal mengakses Inventory service saat reduce stock.", lastTransientError);
     }
 
-    private int resolveStock(InventoryResponse product) {
-        Integer stock = product.getProductQuantity();
-        return stock == null ? 0 : stock;
-    }
-
-    private double resolvePrice(InventoryResponse product) {
-        Double price = product.getPrice();
-        return price == null ? 0.0 : price;
-    }
-
-    private Map<String, Object> buildUpdatePayload(InventoryResponse product, int updatedStock) {
-        return Map.of(
-                "name", product.getProductName(),
-                "description", resolveDescription(product),
-                "price", resolvePrice(product),
-                "stock", updatedStock,
-                "jastiperId", resolveJastiperId(product)
-        );
-    }
-
-    private HttpEntity<Map<String, Object>> buildUpdateRequest(InventoryResponse product, int updatedStock) {
+    private HttpEntity<Void> buildMutationRequest(String authorizationToken) {
         HttpHeaders headers = new HttpHeaders();
+        headers.set(HEADER_AUTHORIZATION, authorizationToken);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(HEADER_USER_ROLE, resolveNullableString(inventoryInternalRole));
-        headers.set(HEADER_USER_ID, resolveNullableString(inventoryInternalUserId));
-        return new HttpEntity<>(buildUpdatePayload(product, updatedStock), headers);
-    }
-
-    private String resolveDescription(InventoryResponse product) {
-        String description = product.getDescription();
-        return resolveNullableString(description);
-    }
-
-    private String resolveJastiperId(InventoryResponse product) {
-        String jastiperId = product.getJastiperId();
-        return resolveNullableString(jastiperId);
-    }
-
-    private String resolveNullableString(String value) {
-        return value == null ? DEFAULT_STRING : value;
+        return new HttpEntity<>(headers);
     }
 
     private String buildProductUrl(String productId) {
@@ -152,9 +119,10 @@ public class InventoryRestAdapter implements InventoryGateway {
                 .toUriString();
     }
 
-    private String buildUpdateProductUrl(String productId) {
+    private String buildReleaseStockUrl(String productId, int quantity) {
         return UriComponentsBuilder.fromUriString(inventoryUrl)
-                .pathSegment(UPDATE_PATH, productId)
+                .pathSegment(productId, RELEASE_PATH)
+                .queryParam("quantity", quantity)
                 .toUriString();
     }
 
@@ -165,9 +133,4 @@ public class InventoryRestAdapter implements InventoryGateway {
                 .toUriString();
     }
 
-    private void validateRetryConfiguration() {
-        if (maxAttempts <= 0) {
-            throw new IllegalStateException("Konfigurasi order.http.retry.max-attempts harus lebih dari 0.");
-        }
-    }
 }

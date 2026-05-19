@@ -317,7 +317,7 @@ class OrderCheckoutFacadeTest {
 
         assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         verify(voucherGateway).useVoucher("HEMAT10");
-        verify(voucherGateway).restoreVoucher("HEMAT10");
+        verify(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
     }
 
     @Test
