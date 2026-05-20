@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -31,7 +30,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_RATING_RANGE = "Rating harus berada pada rentang 1-5";
-    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper harus UUID valid untuk update statistik.";
+    private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper wajib diisi untuk update statistik.";
     private static final String CANCEL_REFUND_IDEMPOTENCY_PREFIX = "cancel-refund-";
     private static final String CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX = "cancel-rollback-debit-";
     private static final String CANCEL_VOUCHER_RESTORE_IDEMPOTENCY_PREFIX = "cancel-restore-voucher-";
@@ -423,7 +422,7 @@ public class OrderServiceImpl implements OrderService {
                 throw new IllegalStateException("Rating untuk order ini sudah pernah dikirim");
             }
             validateRatingRange(jastiperRating, productRating);
-            validateJastiperUuid(order.getJastiperId());
+            validateJastiperIdentity(order.getJastiperId());
 
             order.setJastiperRating(jastiperRating);
             order.setProductRating(productRating);
@@ -474,14 +473,9 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private void validateJastiperUuid(String jastiperId) {
+    private void validateJastiperIdentity(String jastiperId) {
         if (jastiperId == null || jastiperId.isBlank()) {
             throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID);
-        }
-        try {
-            UUID.fromString(jastiperId);
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException(MESSAGE_INVALID_JASTIPER_ID, ex);
         }
     }
 

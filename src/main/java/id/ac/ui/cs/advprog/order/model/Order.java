@@ -6,11 +6,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Data;
+import org.springframework.data.domain.Persistable;
 
 @Data
 @Entity
 @Table(name = "orders")
-public class Order {
+public class Order implements Persistable<String> {
     private static final String MESSAGE_PRODUCT_ID_REQUIRED = "Product ID wajib diisi";
     private static final String MESSAGE_USER_ID_REQUIRED = "User ID wajib diisi";
     private static final String MESSAGE_QUANTITY_REQUIRED = "Jumlah wajib diisi";
@@ -20,8 +21,10 @@ public class Order {
     private static final String MESSAGE_TOTAL_AMOUNT_POSITIVE = "Total amount harus lebih dari 0";
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
+
+    @Transient
+    private boolean newEntity = true;
 
     @NotBlank(message = MESSAGE_PRODUCT_ID_REQUIRED)
     @Column(nullable = false)
@@ -54,4 +57,15 @@ public class Order {
 
     @Enumerated(EnumType.STRING)
     private OrderStatus status = OrderStatus.PENDING;
+
+    @Override
+    public boolean isNew() {
+        return newEntity;
+    }
+
+    @PostPersist
+    @PostLoad
+    void markNotNew() {
+        this.newEntity = false;
+    }
 }

@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 RUN chmod +x gradlew
-RUN ./gradlew clean bootJar -x test
+RUN ./gradlew -Dorg.gradle.wrapper.networkTimeout=120000 clean bootJar -x test
 
 FROM docker.io/library/eclipse-temurin:21-jre-jammy AS runner
 

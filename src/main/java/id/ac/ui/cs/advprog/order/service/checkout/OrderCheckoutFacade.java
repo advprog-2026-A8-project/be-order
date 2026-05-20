@@ -94,6 +94,12 @@ public class OrderCheckoutFacade {
                 checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INSUFFICIENT_STOCK);
                 throw new IllegalArgumentException("Stok barang tidak mencukupi!");
             }
+            // Keep jastiper identity authoritative from inventory ownership.
+            order.setJastiperId(product.getJastiperId());
+            if (isSelfPurchase(order)) {
+                checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_SELF_PURCHASE);
+                throw new IllegalArgumentException(MESSAGE_SELF_PURCHASE_NOT_ALLOWED);
+            }
             validateProductPrice(product);
 
             double baseTotalPrice = product.getPrice() * order.getJumlah();
@@ -145,10 +151,6 @@ public class OrderCheckoutFacade {
             throw new IllegalArgumentException(MESSAGE_INVALID_QUANTITY);
         }
 
-        if (isSelfPurchase(order)) {
-            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_SELF_PURCHASE);
-            throw new IllegalArgumentException(MESSAGE_SELF_PURCHASE_NOT_ALLOWED);
-        }
     }
 
     private boolean isBlank(String value) {
@@ -268,7 +270,10 @@ public class OrderCheckoutFacade {
         }
 
         if (refundFailure == null && releaseFailure == null && voucherRestoreFailure == null) {
-            return new IllegalStateException(MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_DONE, orderSaveException);
+            return new IllegalStateException(
+                    MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_DONE + " Root cause: " + extractRootCauseSummary(orderSaveException),
+                    orderSaveException
+            );
         }
 
         logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
@@ -317,6 +322,19 @@ public class OrderCheckoutFacade {
         if (isBlank(order.getId())) {
             order.setId(UUID.randomUUID().toString());
         }
+    }
+
+    private String extractRootCauseSummary(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String className = current.getClass().getSimpleName();
+        String message = current.getMessage();
+        if (message == null || message.isBlank()) {
+            return className;
+        }
+        return className + ": " + message;
     }
 
     private String resolveWalletIdempotencyKey(Order order, String idempotencyKey) {
