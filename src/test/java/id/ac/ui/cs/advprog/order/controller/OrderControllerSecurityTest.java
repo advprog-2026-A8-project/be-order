@@ -133,6 +133,12 @@ class OrderControllerSecurityTest {
     }
 
     @Test
+    void actuatorPrometheusShouldNotRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void adminEndpointShouldAllowAdminRole() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
         when(orderService.findAdminActiveOrders()).thenReturn(List.of(new Order()));

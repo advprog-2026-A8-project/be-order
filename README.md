@@ -125,8 +125,7 @@ Variabel utama:
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `ORDER_INVENTORY_URL`
-- `ORDER_INVENTORY_INTERNAL_ROLE`
-- `ORDER_INVENTORY_INTERNAL_USER_ID`
+- `ORDER_INVENTORY_INTERNAL_AUTHORIZATION`
 - `ORDER_WALLET_GRPC_HOST`
 - `ORDER_WALLET_GRPC_PORT`
 - `GRPC_SERVER_INTERNAL_TOKEN`
@@ -134,6 +133,9 @@ Variabel utama:
 - `ORDER_PROFILE_URL`
 - `ORDER_PROFILE_INTERNAL_AUTHORIZATION`
 - `ORDER_SECURITY_PRINCIPAL_CLAIM`
+- `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE`
+- `MANAGEMENT_ENDPOINT_PROMETHEUS_ACCESS`
+- `MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED`
 
 ## Run with Docker Compose
 Menjalankan app + PostgreSQL untuk local testing dengan profile:
@@ -156,3 +158,26 @@ Jalankan `main`:
 ```powershell
 docker compose --profile main up --build
 ```
+
+## Monitoring (Prometheus + Grafana + Loki + Promtail + Alertmanager)
+Untuk enable metrics, set di `.env`:
+
+```text
+MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus
+MANAGEMENT_ENDPOINT_PROMETHEUS_ACCESS=unrestricted
+MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true
+```
+
+Jalankan service order terlebih dulu (`main` atau `dev`), lalu jalankan stack monitoring:
+
+```powershell
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+Akses:
+
+- Order metrics: `http://localhost:5002/actuator/prometheus` (dev) atau `http://localhost:5000/actuator/prometheus` (main)
+- Prometheus UI: `http://localhost:5005`
+- Grafana UI: `http://localhost:5004` (default `admin/admin`)
+- Loki API: `http://localhost:5006`
+- Alertmanager UI: `http://localhost:5007`
