@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileRestAdapterTest {
@@ -108,8 +110,8 @@ class ProfileRestAdapterTest {
     }
 
     @Test
-    void submitRatingShouldThrowWhenJastiperIdInvalid() {
-        assertThrows(IllegalArgumentException.class, () ->
+    void submitRatingShouldThrowWhenJastiperIdInvalidAndLookupFails() {
+        assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "not-uuid", "p1", 5, 4));
     }
 
@@ -122,11 +124,33 @@ class ProfileRestAdapterTest {
     }
 
     @Test
-    void submitRatingShouldThrowWhenJastiperIdNotUuid() {
-        assertThrows(IllegalArgumentException.class, () ->
+    void submitRatingShouldThrowWhenJastiperIdNotUuidAndLookupFails() {
+        assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "0", "p1", 5, 4));
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "-10", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldResolveJastiperUuidByEmailWhenNeeded() {
+        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+                .thenReturn(ResponseEntity.ok(Map.of("data", Map.of("id", "550e8400-e29b-41d4-a716-446655440000"))));
+
+        adapter.submitRating("o1", "1", "jastiper@example.com", "p1", 5, 4);
+
+        verify(restTemplate).put(
+                eq("http://localhost:8083/api/profile/admin/jastiper/stats"),
+                argThat(request -> {
+                    if (!(request instanceof HttpEntity<?> entity)) {
+                        return false;
+                    }
+                    Object body = entity.getBody();
+                    if (!(body instanceof Map<?, ?> payload)) {
+                        return false;
+                    }
+                    return "550e8400-e29b-41d4-a716-446655440000".equals(payload.get("userId").toString());
+                })
+        );
     }
 
     @Test

@@ -129,7 +129,7 @@ public class ProfileRestAdapter implements ProfileGateway {
                 Map.class
         );
 
-        if (response.getBody() == null) {
+        if (response == null || response.getBody() == null) {
             throw new IllegalStateException(MESSAGE_FAILED_RESOLVE_JASTIPER_UUID);
         }
         Object data = response.getBody().get("data");

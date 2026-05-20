@@ -91,7 +91,7 @@ Service ini memakai kombinasi HTTP + gRPC:
 
 - Inventory (HTTP): `${ORDER_INVENTORY_URL}`
   - `POST /{id}/reserve?quantity=...`
-  - `PUT /update/{id}` (untuk kompensasi release stock saat cancel/failure)
+  - `POST /{id}/release?quantity=...` (untuk kompensasi release stock saat cancel/failure)
 - Wallet Contract (gRPC): `${ORDER_WALLET_GRPC_HOST}:${ORDER_WALLET_GRPC_PORT}`
   - `checkBalance`
   - `deductBalance`

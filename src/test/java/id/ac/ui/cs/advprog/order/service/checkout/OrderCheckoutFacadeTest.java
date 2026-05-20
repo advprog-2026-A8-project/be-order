@@ -205,7 +205,8 @@ class OrderCheckoutFacadeTest {
     @Test
     void checkoutShouldRejectSelfPurchaseByJastiper() {
         order.setUserId("550e8400-e29b-41d4-a716-446655440000");
-        order.setJastiperId("550E8400-E29B-41D4-A716-446655440000");
+        product.setJastiperId("550E8400-E29B-41D4-A716-446655440000");
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
 
         assertThrows(IllegalArgumentException.class, () -> checkoutFacade.checkout(order));
 
