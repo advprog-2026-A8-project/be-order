@@ -19,6 +19,8 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
     private static final String MESSAGE_PRODUCT_USER_REQUIRED = "Product ID dan User ID tidak boleh kosong";
     private static final String MESSAGE_INVALID_QUANTITY = "Jumlah pesanan harus lebih dari 0";
+    private static final String MESSAGE_SELF_PURCHASE_NOT_ALLOWED =
+            "Jastiper tidak boleh membeli barang miliknya sendiri.";
     private static final String MESSAGE_INVALID_PRICE = "Harga produk tidak valid";
     private static final String MESSAGE_INVALID_VOUCHER = "Voucher tidak valid atau tidak dapat digunakan.";
     private static final String MESSAGE_IDEMPOTENCY_ORDER_NOT_FOUND = "Order untuk idempotency key tidak ditemukan";
@@ -33,6 +35,7 @@ public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_FAILED =
             "Order gagal disimpan setelah debit wallet dan reserve stok. Kompensasi refund/release gagal.";
     private static final String DEFAULT_WALLET_IDEMPOTENCY_PREFIX = "wallet-order-";
+    private static final String VOUCHER_RESTORE_IDEMPOTENCY_PREFIX = "checkout-restore-voucher-";
     private static final String REFUND_SUFFIX = "-refund";
 
     private final InventoryGateway inventoryGateway;
@@ -141,10 +144,22 @@ public class OrderCheckoutFacade {
             checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_INVALID_QUANTITY);
             throw new IllegalArgumentException(MESSAGE_INVALID_QUANTITY);
         }
+
+        if (isSelfPurchase(order)) {
+            checkoutAuditLogger.logValidationFailed(CheckoutAuditReason.VALIDATION_SELF_PURCHASE);
+            throw new IllegalArgumentException(MESSAGE_SELF_PURCHASE_NOT_ALLOWED);
+        }
     }
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private boolean isSelfPurchase(Order order) {
+        if (isBlank(order.getJastiperId())) {
+            return false;
+        }
+        return order.getUserId().trim().equalsIgnoreCase(order.getJastiperId().trim());
     }
 
     private boolean hasSameCheckoutPayload(Order existingOrder, Order incomingOrder) {
@@ -243,7 +258,10 @@ public class OrderCheckoutFacade {
 
         if (voucherApplied) {
             try {
-                voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+                voucherGateway.restoreVoucher(
+                        order.getVoucherCode().trim(),
+                        VOUCHER_RESTORE_IDEMPOTENCY_PREFIX + order.getId()
+                );
             } catch (RuntimeException ex) {
                 voucherRestoreFailure = ex;
             }

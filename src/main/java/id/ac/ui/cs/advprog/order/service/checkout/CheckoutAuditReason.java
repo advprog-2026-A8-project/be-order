@@ -4,6 +4,7 @@ public final class CheckoutAuditReason {
     public static final String VALIDATION_ORDER_NULL = "order_null";
     public static final String VALIDATION_MISSING_PRODUCT_OR_USER = "missing_product_or_user";
     public static final String VALIDATION_INVALID_QUANTITY = "invalid_quantity";
+    public static final String VALIDATION_SELF_PURCHASE = "self_purchase_not_allowed";
     public static final String VALIDATION_INSUFFICIENT_STOCK = "insufficient_stock";
     public static final String VALIDATION_INVALID_PRICE = "invalid_price";
     public static final String VALIDATION_INVALID_VOUCHER = "invalid_voucher";

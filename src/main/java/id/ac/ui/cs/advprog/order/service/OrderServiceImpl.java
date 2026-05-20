@@ -34,6 +34,7 @@ public class OrderServiceImpl implements OrderService {
     private static final String MESSAGE_INVALID_JASTIPER_ID = "ID jastiper harus UUID valid untuk update statistik.";
     private static final String CANCEL_REFUND_IDEMPOTENCY_PREFIX = "cancel-refund-";
     private static final String CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX = "cancel-rollback-debit-";
+    private static final String CANCEL_VOUCHER_RESTORE_IDEMPOTENCY_PREFIX = "cancel-restore-voucher-";
     private static final String CANCEL_RESERVE_ROLLBACK_REASON =
             "Cancel gagal; stok sudah direlease sehingga dicoba reserve ulang.";
     private static final String CANCEL_VOUCHER_ROLLBACK_REASON =
@@ -177,7 +178,10 @@ public class OrderServiceImpl implements OrderService {
 
     private CompensationAttempt tryRestoreVoucher(Order order) {
         try {
-            voucherGateway.restoreVoucher(order.getVoucherCode().trim());
+            voucherGateway.restoreVoucher(
+                    order.getVoucherCode().trim(),
+                    CANCEL_VOUCHER_RESTORE_IDEMPOTENCY_PREFIX + order.getId()
+            );
             return CompensationAttempt.success();
         } catch (RuntimeException ex) {
             return CompensationAttempt.failure(ex);

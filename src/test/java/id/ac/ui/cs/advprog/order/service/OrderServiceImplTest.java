@@ -236,7 +236,7 @@ class OrderServiceImplTest {
 
         orderService.cancelOrderByJastiper("order-1", "jastiper-1");
 
-        verify(voucherGateway).restoreVoucher("HEMAT10");
+        verify(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
     }
 
     @Test
@@ -254,7 +254,7 @@ class OrderServiceImplTest {
 
         orderService.cancelOrderByJastiper("order-1", "jastiper-1");
 
-        verify(voucherGateway, never()).restoreVoucher(anyString());
+        verify(voucherGateway, never()).restoreVoucher(anyString(), anyString());
     }
 
     @Test
@@ -304,7 +304,8 @@ class OrderServiceImplTest {
         order.setTotalAmount(10000.0);
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderStateMachine.isValidTransition(OrderStatus.PAID, OrderStatus.CANCELLED)).thenReturn(true);
-        doThrow(new IllegalStateException("restore failed")).when(voucherGateway).restoreVoucher("HEMAT10");
+        doThrow(new IllegalStateException("restore failed"))
+                .when(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
 
         assertThrows(IllegalStateException.class, () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
 
@@ -328,7 +329,7 @@ class OrderServiceImplTest {
 
         assertThrows(IllegalStateException.class, () -> orderService.cancelOrderByJastiper("order-1", "jastiper-1"));
 
-        verify(voucherGateway).restoreVoucher("HEMAT10");
+        verify(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
         verify(voucherGateway).useVoucher("HEMAT10");
     }
 

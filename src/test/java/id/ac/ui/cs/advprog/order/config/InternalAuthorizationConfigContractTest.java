@@ -13,6 +13,8 @@ class InternalAuthorizationConfigContractTest {
 
     private static final String PROFILE_PROP =
             "order.profile.internal-authorization=${ORDER_PROFILE_INTERNAL_AUTHORIZATION:}";
+    private static final String INVENTORY_PROP =
+            "order.inventory.internal-authorization=${ORDER_INVENTORY_INTERNAL_AUTHORIZATION:}";
     private static final String WALLET_PROP =
             "order.wallet.internal-authorization=${ORDER_WALLET_INTERNAL_AUTHORIZATION:Bearer ";
 
@@ -21,6 +23,7 @@ class InternalAuthorizationConfigContractTest {
         String content = Files.readString(Path.of("src/main/resources/application.properties"));
 
         assertTrue(content.contains(PROFILE_PROP));
+        assertTrue(content.contains(INVENTORY_PROP));
         assertTrue(content.contains(WALLET_PROP));
     }
 
@@ -30,6 +33,8 @@ class InternalAuthorizationConfigContractTest {
 
         assertTrue(lines.stream().anyMatch(line ->
                 line.startsWith("ORDER_PROFILE_INTERNAL_AUTHORIZATION=Bearer ")));
+        assertTrue(lines.stream().anyMatch(line ->
+                line.startsWith("ORDER_INVENTORY_INTERNAL_AUTHORIZATION=Bearer ")));
         assertTrue(lines.stream().anyMatch(line ->
                 line.startsWith("ORDER_WALLET_INTERNAL_AUTHORIZATION=Bearer ")));
     }
