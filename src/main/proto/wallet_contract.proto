@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "id.ac.ui.cs.advprog.bewallettransaksi.grpc";
+option java_outer_classname = "WalletContractProto";
+
+service WalletContractService {
+  rpc CheckBalance (CheckBalanceRequest) returns (CheckBalanceResponse);
+  rpc DeductBalance (DeductBalanceRequest) returns (WalletMutationResponse);
+  rpc RefundBalance (RefundBalanceRequest) returns (WalletMutationResponse);
+}
+
+message CheckBalanceRequest {
+  string user_id = 1;
+  string amount = 2;
+}
+
+message CheckBalanceResponse {
+  bool sufficient = 1;
+  string current_balance = 2;
+}
+
+message DeductBalanceRequest {
+  string user_id = 1;
+  string order_id = 2;
+  string amount = 3;
+  string idempotency_key = 4;
+}
+
+message RefundBalanceRequest {
+  string user_id = 1;
+  string order_id = 2;
+  string amount = 3;
+  string idempotency_key = 4;
+}
+
+message WalletMutationResponse {
+  bool success = 1;
+  string updated_balance = 2;
+  string error_code = 3;
+  bool retryable = 4;
+}
