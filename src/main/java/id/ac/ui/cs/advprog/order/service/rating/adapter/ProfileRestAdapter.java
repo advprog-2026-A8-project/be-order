@@ -127,7 +127,7 @@ public class ProfileRestAdapter implements ProfileGateway {
                 lookupUrl,
                 HttpMethod.GET,
                 new HttpEntity<>(headers),
-                new ParameterizedTypeReference<>() {}
+                new ParameterizedTypeReference<>() { }
         );
 
         if (response.getBody() == null) {
