@@ -515,7 +515,7 @@ class OrderServiceImplTest {
 
         assertEquals(5, result.getJastiperRating());
         assertEquals(4, result.getProductRating());
-        verify(profileGateway).submitRating(eq("order-1"), eq("user-1"), eq("jastiper-x"), eq("p1"), eq(5), eq(4));
+        verify(profileGateway).submitRating("order-1", "user-1", "jastiper-x", "p1", 5, 4);
     }
 
     @Test

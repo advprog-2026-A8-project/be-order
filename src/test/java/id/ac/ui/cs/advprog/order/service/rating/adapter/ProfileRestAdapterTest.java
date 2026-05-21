@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -115,6 +116,13 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingShouldThrowWhenJastiperIdInvalidAndLookupFails() {
+        when(restTemplate.exchange(
+                anyString(),
+                eq(org.springframework.http.HttpMethod.GET),
+                any(),
+                org.mockito.ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+        )).thenReturn(ResponseEntity.ok(Map.of()));
+
         assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "not-uuid", "p1", 5, 4));
     }
@@ -129,6 +137,13 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingShouldThrowWhenJastiperIdNotUuidAndLookupFails() {
+        when(restTemplate.exchange(
+                anyString(),
+                eq(org.springframework.http.HttpMethod.GET),
+                any(),
+                org.mockito.ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+        )).thenReturn(ResponseEntity.ok(Map.of()));
+
         assertThrows(IllegalStateException.class, () ->
                 adapter.submitRating("o1", "1", "0", "p1", 5, 4));
         assertThrows(IllegalStateException.class, () ->
@@ -137,7 +152,12 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingShouldResolveJastiperUuidByEmailWhenNeeded() {
-        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+        when(restTemplate.exchange(
+                anyString(),
+                eq(org.springframework.http.HttpMethod.GET),
+                any(),
+                org.mockito.ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+        ))
                 .thenReturn(ResponseEntity.ok(Map.of("data", Map.of("id", "550e8400-e29b-41d4-a716-446655440000"))));
 
         adapter.submitRating("o1", "1", "jastiper@example.com", "p1", 5, 4);
@@ -198,7 +218,12 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingShouldFailWhenLookupDataIsNotMap() {
-        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+        when(restTemplate.exchange(
+                anyString(),
+                eq(org.springframework.http.HttpMethod.GET),
+                any(),
+                org.mockito.ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+        ))
                 .thenReturn(ResponseEntity.ok(Map.of("data", "not-a-map")));
 
         assertThrows(IllegalStateException.class, () ->
@@ -207,7 +232,12 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingShouldFailWhenLookupIdIsBlank() {
-        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+        when(restTemplate.exchange(
+                anyString(),
+                eq(org.springframework.http.HttpMethod.GET),
+                any(),
+                org.mockito.ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+        ))
                 .thenReturn(ResponseEntity.ok(Map.of("data", Map.of("id", "   "))));
 
         assertThrows(IllegalStateException.class, () ->
@@ -216,7 +246,12 @@ class ProfileRestAdapterTest {
 
     @Test
     void submitRatingShouldFailWhenLookupIdIsInvalidUuid() {
-        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+        when(restTemplate.exchange(
+                anyString(),
+                eq(org.springframework.http.HttpMethod.GET),
+                any(),
+                org.mockito.ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+        ))
                 .thenReturn(ResponseEntity.ok(Map.of("data", Map.of("id", "invalid-uuid"))));
 
         assertThrows(IllegalStateException.class, () ->

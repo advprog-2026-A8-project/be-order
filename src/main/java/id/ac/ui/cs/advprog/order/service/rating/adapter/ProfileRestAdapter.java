@@ -10,6 +10,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
@@ -122,14 +123,14 @@ public class ProfileRestAdapter implements ProfileGateway {
 
         HttpHeaders headers = new HttpHeaders();
         headers.set(AUTHORIZATION_HEADER, authorizationToken);
-        ResponseEntity<Map> response = restTemplate.exchange(
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 lookupUrl,
                 HttpMethod.GET,
                 new HttpEntity<>(headers),
-                Map.class
+                new ParameterizedTypeReference<>() {}
         );
 
-        if (response == null || response.getBody() == null) {
+        if (response.getBody() == null) {
             throw new IllegalStateException(MESSAGE_FAILED_RESOLVE_JASTIPER_UUID);
         }
         Object data = response.getBody().get("data");
