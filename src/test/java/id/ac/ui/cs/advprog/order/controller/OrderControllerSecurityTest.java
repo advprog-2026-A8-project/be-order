@@ -53,21 +53,21 @@ class OrderControllerSecurityTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void checkoutEndpointShouldRejectJastiperRole() throws Exception {
+    void checkoutEndpointShouldAllowOwnerJastiper() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
+        when(orderService.createOrder(org.mockito.ArgumentMatchers.any(Order.class), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new Order());
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "productId", "prod-1",
-                                "userId", "user-1",
+                                "userId", "jastiper-1",
                                 "jastiperId", "jastiper-1",
                                 "jumlah", 1,
                                 "alamatPengiriman", "Jakarta"
                         )))
                         .with(user("jastiper-1").roles("JASTIPER")))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
-                .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -149,9 +149,19 @@ class OrderControllerSecurityTest {
     }
 
     @Test
-    void titiperHistoryEndpointShouldRejectJastiperRole() throws Exception {
+    void titiperHistoryEndpointShouldAllowOwnerJastiperRole() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
-        mockMvc.perform(get("/api/orders/titiper/user-1/history")
+        when(orderService.findTitiperOrderHistory("jastiper-1")).thenReturn(List.of(new Order()));
+
+        mockMvc.perform(get("/api/orders/titiper/jastiper-1/history")
+                        .with(user("jastiper-1").roles("JASTIPER")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void titiperActiveEndpointShouldRejectDifferentJastiperIdentity() throws Exception {
+        lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
+        mockMvc.perform(get("/api/orders/titiper/user-2/active")
                         .with(user("jastiper-1").roles("JASTIPER")))
                 .andExpect(status().isForbidden());
     }
@@ -256,17 +266,18 @@ class OrderControllerSecurityTest {
     }
 
     @Test
-    void ratingEndpointShouldRejectJastiperRole() throws Exception {
+    void ratingEndpointShouldAllowOwnerJastiperRole() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
+        when(orderService.submitOrderRating("order-1", "jastiper-1", 5, 4)).thenReturn(new Order());
         mockMvc.perform(post("/api/orders/order-1/rating")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "userId", "user-1",
+                                "userId", "jastiper-1",
                                 "jastiperRating", 5,
                                 "productRating", 4
                         )))
                         .with(user("jastiper-1").roles("JASTIPER")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test

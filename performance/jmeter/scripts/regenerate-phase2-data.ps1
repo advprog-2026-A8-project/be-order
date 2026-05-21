@@ -9,7 +9,9 @@ param(
     [string]$TitiperPassword = "Titip123!",
     [string]$JastiperEmail = "jastip@example.com",
     [string]$JastiperPassword = "Jastip123!",
-    [double]$TopupAmount = 500000,
+    [double]$TopupAmount = 200000000,
+    [int]$PayloadRows = 12,
+    [int]$GeneratedProductStock = 10000,
     [switch]$SkipTopup
 )
 
@@ -126,6 +128,39 @@ function Ensure-Product {
     return $created.id
 }
 
+function Get-ValidProducts {
+    param(
+        [string]$InventoryApi,
+        [string]$JastiperUserId
+    )
+
+    $products = Invoke-RestMethod -Method GET -Uri "$InventoryApi/api/products/jastiper/$JastiperUserId"
+    return @($products | Where-Object { $_.stock -gt 0 -and $_.price -gt 0 })
+}
+
+function New-LoadTestProduct {
+    param(
+        [string]$InventoryApi,
+        [string]$JastiperToken,
+        [int]$Stock,
+        [int]$Index
+    )
+
+    $createBody = @{
+        name = "Produk Perf JMeter $Index"
+        description = "Auto-generated product for order performance test"
+        price = 100000
+        stock = $Stock
+        originCountry = "Jepang"
+        purchaseDate = (Get-Date).ToString("yyyy-MM-dd")
+    } | ConvertTo-Json
+
+    return Invoke-RestMethod -Method POST -Uri "$InventoryApi/api/products/create" -Headers @{
+        Authorization = $JastiperToken
+        "Content-Type" = "application/json"
+    } -Body $createBody
+}
+
 Write-Host "Login admin/titiper/jastiper..."
 $adminLogin = Login-User -Email $AdminEmail -Password $AdminPassword -BaseUrl $AuthBase
 $titiperLogin = Login-User -Email $TitiperEmail -Password $TitiperPassword -BaseUrl $AuthBase
@@ -150,6 +185,40 @@ $productId = Ensure-Product -InventoryApi $InventoryBase -JastiperUserId $jastip
 $jumlah = if ($existingPayload.jumlah) { [int]$existingPayload.jumlah } else { 1 }
 $alamat = if ($existingPayload.alamatPengiriman) { $existingPayload.alamatPengiriman } else { "Jalan Margonda Raya" }
 $voucherCode = if ($existingPayload.voucherCode) { $existingPayload.voucherCode } else { "" }
+
+$validProducts = Get-ValidProducts -InventoryApi $InventoryBase -JastiperUserId $jastiperUserId
+if ($validProducts.Count -eq 0) {
+    throw "Tidak ada produk valid untuk load test setelah proses ensure product."
+}
+
+$productMap = @{}
+foreach ($p in $validProducts) {
+    if ($null -ne $p.id -and $p.id -ne "") {
+        $productMap[$p.id] = $p
+    }
+}
+
+if (-not $productMap.ContainsKey($productId)) {
+    $productMap[$productId] = [PSCustomObject]@{
+        id = $productId
+        stock = 1
+        price = 100000
+    }
+}
+
+while ($productMap.Count -lt $PayloadRows) {
+    $newIndex = $productMap.Count + 1
+    Write-Host "Membuat produk tambahan untuk payload load test... ($newIndex)"
+    $created = New-LoadTestProduct -InventoryApi $InventoryBase -JastiperToken $jastiperToken -Stock $GeneratedProductStock -Index $newIndex
+    if ($null -ne $created.id -and $created.id -ne "") {
+        $productMap[$created.id] = $created
+    }
+}
+
+$payloadProducts = @($productMap.Values | Sort-Object stock -Descending)
+if ($payloadProducts.Count -gt $PayloadRows) {
+    $payloadProducts = $payloadProducts | Select-Object -First $PayloadRows
+}
 
 if (-not $SkipTopup) {
     try {
@@ -177,7 +246,13 @@ Invoke-RestMethod -Method PATCH -Uri "$OrderBase/api/orders/$($oCompleted.id)/st
 Set-Content -Path $adminCsvPath -Value "adminToken`n$adminToken"
 Set-Content -Path $titiperCsvPath -Value "titiperUserId,titiperToken`n$titiperUserId,$titiperToken"
 Set-Content -Path $jastiperCsvPath -Value "jastiperUserId,jastiperToken`n$jastiperUserId,$jastiperToken"
-Set-Content -Path $payloadCsvPath -Value "productId,jumlah,alamatPengiriman,voucherCode`n$productId,$jumlah,$alamat,$voucherCode"
+
+$payloadLines = @("productId,jumlah,alamatPengiriman,voucherCode")
+foreach ($product in $payloadProducts) {
+    $payloadLines += "$($product.id),$jumlah,$alamat,$voucherCode"
+}
+Set-Content -Path $payloadCsvPath -Value ($payloadLines -join "`n")
+
 Set-Content -Path $bizCsvPath -Value "statusOrderId,nextStatus,cancelOrderId,completedOrderId,jastiperIdForCancel,jastiperRating,productRating`n$($oStatus.id),PURCHASED,$($oCancel.id),$($oCompleted.id),$jastiperUserId,5,5"
 
 Write-Host "Selesai. CSV phase-2 berhasil diregenerasi."
@@ -185,3 +260,4 @@ Write-Host "statusOrderId   = $($oStatus.id)"
 Write-Host "cancelOrderId   = $($oCancel.id)"
 Write-Host "completedOrderId= $($oCompleted.id)"
 Write-Host "productId       = $productId"
+Write-Host "payloadRows     = $($payloadProducts.Count)"

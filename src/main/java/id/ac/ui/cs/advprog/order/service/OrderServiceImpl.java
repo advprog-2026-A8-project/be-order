@@ -22,8 +22,6 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -348,12 +346,29 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public AdminOrderSummaryResponse getAdminOrderSummary() {
         List<Order> orders = orderRepository.findAll();
-        Map<String, Long> statusCounts = groupStatusCounts(orders);
-
         long totalOrders = orders.size();
-        long activeOrders = countOrders(orders, order -> ACTIVE_STATUSES.contains(order.getStatus()));
-        long completedOrders = countOrders(orders, order -> order.getStatus() == OrderStatus.COMPLETED);
-        long cancelledOrders = countOrders(orders, order -> order.getStatus() == OrderStatus.CANCELLED);
+        long activeOrders = 0L;
+        long completedOrders = 0L;
+        long cancelledOrders = 0L;
+        Map<String, Long> statusCounts = new java.util.HashMap<>();
+
+        for (Order order : orders) {
+            OrderStatus status = order.getStatus();
+            if (status == null) {
+                continue;
+            }
+            String statusName = status.name();
+            statusCounts.merge(statusName, 1L, Long::sum);
+            if (ACTIVE_STATUSES.contains(status)) {
+                activeOrders++;
+            }
+            if (status == OrderStatus.COMPLETED) {
+                completedOrders++;
+            }
+            if (status == OrderStatus.CANCELLED) {
+                cancelledOrders++;
+            }
+        }
 
         return new AdminOrderSummaryResponse(
                 totalOrders,
@@ -362,18 +377,6 @@ public class OrderServiceImpl implements OrderService {
                 cancelledOrders,
                 statusCounts
         );
-    }
-
-    private Map<String, Long> groupStatusCounts(List<Order> orders) {
-        return orders.stream()
-                .collect(Collectors.groupingBy(
-                        order -> order.getStatus().name(),
-                        Collectors.counting()
-                ));
-    }
-
-    private long countOrders(List<Order> orders, Predicate<Order> predicate) {
-        return orders.stream().filter(predicate).count();
     }
 
     private OrderStatus parseOrderStatus(String status) {
