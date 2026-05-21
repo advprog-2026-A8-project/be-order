@@ -32,4 +32,14 @@ class OrderTest {
         assertTrue(order.getRatingSubmitted());
         assertEquals(OrderStatus.PENDING, order.getStatus());
     }
+
+    @Test
+    void markNotNewShouldFlipEntityState() {
+        Order order = new Order();
+        assertTrue(order.isNew());
+
+        order.markNotNew();
+
+        assertFalse(order.isNew());
+    }
 }

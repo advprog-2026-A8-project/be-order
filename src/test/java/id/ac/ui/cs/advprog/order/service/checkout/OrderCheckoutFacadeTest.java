@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.lang.reflect.Method;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -497,5 +498,116 @@ class OrderCheckoutFacadeTest {
         assertEquals(OrderStatus.PAID, result.getStatus());
         verify(orderIdempotencyRepository, never()).findById(anyString());
         verify(orderIdempotencyRepository, never()).save(any(OrderIdempotency.class));
+    }
+
+    @Test
+    void checkoutShouldAddVoucherRestoreFailureAsSuppressedException() {
+        order.setVoucherCode("HEMAT10");
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(voucherGateway.validateDiscount("HEMAT10", 10000.0)).thenReturn(1000.0);
+        doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
+        doThrow(new IllegalStateException("voucher restore failed"))
+                .when(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+
+        assertTrue(ex.getSuppressed().length >= 1);
+        verify(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyAndDifferentProductShouldThrow() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p-old");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId(null);
+        existingOrder.setAlamatPengiriman(null);
+
+        when(orderIdempotencyRepository.findById("idem-product"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-product", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-product"));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyAndDifferentUserShouldThrow() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u-old");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId(null);
+        existingOrder.setAlamatPengiriman(null);
+
+        when(orderIdempotencyRepository.findById("idem-user"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-user", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-user"));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyAndDifferentJastiperShouldThrow() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId("j-old");
+        existingOrder.setAlamatPengiriman("alamat");
+
+        Order incoming = new Order();
+        incoming.setProductId("p1");
+        incoming.setUserId("u1");
+        incoming.setJumlah(2);
+        incoming.setJastiperId("j-new");
+        incoming.setAlamatPengiriman("alamat");
+
+        when(orderIdempotencyRepository.findById("idem-jastiper"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-jastiper", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(incoming, "idem-jastiper"));
+    }
+
+    @Test
+    void checkoutWithExistingIdempotencyKeyAndDifferentAddressShouldThrow() {
+        Order existingOrder = new Order();
+        existingOrder.setId("order-100");
+        existingOrder.setProductId("p1");
+        existingOrder.setUserId("u1");
+        existingOrder.setJumlah(2);
+        existingOrder.setJastiperId("j1");
+        existingOrder.setAlamatPengiriman("alamat-lama");
+
+        Order incoming = new Order();
+        incoming.setProductId("p1");
+        incoming.setUserId("u1");
+        incoming.setJumlah(2);
+        incoming.setJastiperId("j1");
+        incoming.setAlamatPengiriman("alamat-baru");
+
+        when(orderIdempotencyRepository.findById("idem-address"))
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-address", "order-100")));
+        when(orderRepository.findById("order-100")).thenReturn(java.util.Optional.of(existingOrder));
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(incoming, "idem-address"));
+    }
+
+    @Test
+    void resolveWalletIdempotencyKeyShouldFallbackForBlankValue() throws Exception {
+        Method method = OrderCheckoutFacade.class
+                .getDeclaredMethod("resolveWalletIdempotencyKey", Order.class, String.class);
+        method.setAccessible(true);
+
+        Order explicitOrder = new Order();
+        explicitOrder.setId("order-xyz");
+
+        String result = (String) method.invoke(checkoutFacade, explicitOrder, "   ");
+
+        assertEquals("wallet-order-order-xyz", result);
     }
 }

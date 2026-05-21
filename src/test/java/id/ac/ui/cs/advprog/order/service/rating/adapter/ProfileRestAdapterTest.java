@@ -14,11 +14,15 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Objects;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -179,5 +183,78 @@ class ProfileRestAdapterTest {
                 adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
         assertTrue(exception.getMessage().contains("max-attempts"));
         verify(restTemplate, never()).put(anyString(), any());
+    }
+
+    @Test
+    void submitRatingShouldWrapIllegalArgumentFromRestTemplatePut() {
+        doThrow(new IllegalArgumentException("invalid payload"))
+                .when(restTemplate).put(anyString(), any());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                adapter.submitRating("o1", "1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4));
+
+        assertTrue(ex.getMessage().contains("ID jastiper tidak valid"));
+    }
+
+    @Test
+    void submitRatingShouldFailWhenLookupDataIsNotMap() {
+        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+                .thenReturn(ResponseEntity.ok(Map.of("data", "not-a-map")));
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "jastiper@example.com", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldFailWhenLookupIdIsBlank() {
+        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+                .thenReturn(ResponseEntity.ok(Map.of("data", Map.of("id", "   "))));
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "jastiper@example.com", "p1", 5, 4));
+    }
+
+    @Test
+    void submitRatingShouldFailWhenLookupIdIsInvalidUuid() {
+        when(restTemplate.exchange(anyString(), eq(org.springframework.http.HttpMethod.GET), any(), eq(Map.class)))
+                .thenReturn(ResponseEntity.ok(Map.of("data", Map.of("id", "invalid-uuid"))));
+
+        assertThrows(IllegalStateException.class, () ->
+                adapter.submitRating("o1", "1", "jastiper@example.com", "p1", 5, 4));
+    }
+
+    @Test
+    void parseJastiperUuidPrivateMethodShouldRejectNullAndInvalid() throws Exception {
+        Method method = ProfileRestAdapter.class.getDeclaredMethod("parseJastiperUuid", String.class);
+        method.setAccessible(true);
+
+        IllegalArgumentException nullEx = assertThrows(
+                IllegalArgumentException.class,
+                () -> invokeParseMethod(method, null)
+        );
+        assertTrue(nullEx.getMessage().contains("UUID"));
+
+        IllegalArgumentException invalidEx = assertThrows(
+                IllegalArgumentException.class,
+                () -> invokeParseMethod(method, "invalid-uuid")
+        );
+        assertTrue(invalidEx.getMessage().contains("UUID"));
+
+        UUID parsed = invokeParseMethod(method, "550e8400-e29b-41d4-a716-446655440000");
+        assertEquals(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"), parsed);
+    }
+
+    private UUID invokeParseMethod(Method method, String value) {
+        try {
+            return (UUID) method.invoke(adapter, value);
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(cause);
+        } catch (IllegalAccessException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 }
