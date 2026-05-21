@@ -1,2 +1,2 @@
 statusOrderId,nextStatus,cancelOrderId,completedOrderId,jastiperIdForCancel,jastiperRating,productRating
-131ed15d-11c6-43fd-a5b7-a61402801836,PURCHASED,bd8b49e6-9033-439e-ad86-c45acb4ef999,496ee5e9-445b-4b1a-8313-76b08d2400b8,f39bbea7-572c-4a66-b757-44a42f23913e,5,5
+a1568eda-986f-4620-84d0-fae1d3eb7d07,PURCHASED,9a7d4262-f364-46af-a6ea-400c2c3da2d0,1ead5969-4f3b-4ee1-ac6a-1a33ecaf8d8d,f39bbea7-572c-4a66-b757-44a42f23913e,5,5

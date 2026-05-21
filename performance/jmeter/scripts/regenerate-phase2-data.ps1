@@ -60,7 +60,27 @@ function New-CheckoutOrder {
         "Idempotency-Key" = [guid]::NewGuid().ToString()
     }
 
-    return Invoke-RestMethod -Method POST -Uri "$OrderApi/api/orders/checkout" -Headers $headers -Body $body
+    try {
+        return Invoke-RestMethod -Method POST -Uri "$OrderApi/api/orders/checkout" -Headers $headers -Body $body
+    } catch {
+        $responseBody = $null
+        if ($_.Exception.Response) {
+            try {
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream) {
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    $responseBody = $reader.ReadToEnd()
+                }
+            } catch {
+                $responseBody = $null
+            }
+        }
+
+        if ($responseBody) {
+            throw "Checkout gagal. Response body: $responseBody"
+        }
+        throw "Checkout gagal. Error: $($_.Exception.Message)"
+    }
 }
 
 function Ensure-Product {
