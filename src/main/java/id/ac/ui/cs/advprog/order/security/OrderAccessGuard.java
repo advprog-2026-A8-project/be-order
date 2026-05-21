@@ -10,11 +10,15 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.Optional;
+import java.util.UUID;
 
 @Component("orderAccessGuard")
 @RequiredArgsConstructor
 public class OrderAccessGuard {
+    private static final String CLAIM_EMAIL = "email";
+    private static final String CLAIM_USER_ID = "userId";
+    private static final String CLAIM_ID = "id";
+
     private final OrderRepository orderRepository;
 
     public boolean isOwner(Authentication authentication, String userId) {
@@ -43,25 +47,16 @@ public class OrderAccessGuard {
 
         String normalizedRequested = requestedUserId.trim();
         Set<String> identityCandidates = extractIdentityCandidates(authentication);
-
-        Optional<String> exactMatch = identityCandidates.stream()
-                .filter(candidate -> candidate.equals(normalizedRequested))
-                .findFirst();
-        if (exactMatch.isPresent()) {
-            return exactMatch.get();
+        if (identityCandidates.contains(normalizedRequested)) {
+            return normalizedRequested;
         }
 
-        Optional<String> preferredUuidStyleIdentity = identityCandidates.stream()
-                .filter(candidate -> {
-                    try {
-                        java.util.UUID.fromString(candidate);
-                        return true;
-                    } catch (IllegalArgumentException ex) {
-                        return false;
-                    }
-                })
-                .findFirst();
-        return preferredUuidStyleIdentity.orElse(normalizedRequested);
+        for (String candidate : identityCandidates) {
+            if (looksLikeUuid(candidate)) {
+                return candidate;
+            }
+        }
+        return normalizedRequested;
     }
 
     public boolean canUpdateStatus(Authentication authentication, String orderId) {
@@ -89,9 +84,9 @@ public class OrderAccessGuard {
 
         if (authentication instanceof JwtAuthenticationToken jwtAuth) {
             addIfPresent(identities, jwtAuth.getToken().getSubject());
-            addIfPresent(identities, jwtAuth.getToken().getClaimAsString("email"));
-            addIfPresent(identities, jwtAuth.getToken().getClaimAsString("userId"));
-            addIfPresent(identities, jwtAuth.getToken().getClaimAsString("id"));
+            addIfPresent(identities, jwtAuth.getToken().getClaimAsString(CLAIM_EMAIL));
+            addIfPresent(identities, jwtAuth.getToken().getClaimAsString(CLAIM_USER_ID));
+            addIfPresent(identities, jwtAuth.getToken().getClaimAsString(CLAIM_ID));
         }
         return identities;
     }
@@ -103,6 +98,15 @@ public class OrderAccessGuard {
         String normalized = candidate.trim();
         if (!normalized.isEmpty()) {
             identities.add(normalized);
+        }
+    }
+
+    private boolean looksLikeUuid(String candidate) {
+        try {
+            UUID.fromString(candidate);
+            return true;
+        } catch (RuntimeException ex) {
+            return false;
         }
     }
 }

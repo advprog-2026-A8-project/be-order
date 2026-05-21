@@ -30,7 +30,7 @@ public class OrderController {
     private final OrderAccessGuard orderAccessGuard;
 
     @PostMapping("/checkout")
-    @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.canCheckoutForRequestUser(authentication, #orderRequest)")
+    @PreAuthorize("hasAnyRole('TITIPER','JASTIPER') and @orderAccessGuard.canCheckoutForRequestUser(authentication, #orderRequest)")
     public ResponseEntity<Order> checkout(
             @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
@@ -165,7 +165,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/rating")
-    @PreAuthorize("hasRole('TITIPER') and @orderAccessGuard.isOwnerOfRequestedUser(authentication, #ratingRequest.userId)")
+    @PreAuthorize("hasAnyRole('TITIPER','JASTIPER') and @orderAccessGuard.isOwnerOfRequestedUser(authentication, #ratingRequest.userId)")
     public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
         Order ratedOrder = orderService.submitOrderRating(
                 id,

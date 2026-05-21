@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 public class Slf4jCheckoutAuditLogger implements CheckoutAuditLogger {
     @Override
     public void logCheckoutStarted(Order order, String idempotencyKey) {
-        log.info(
+        log.debug(
                 "checkout_started productId={} userId={} quantity={} idempotencyKey={}",
                 order.getProductId(),
                 order.getUserId(),
@@ -20,7 +20,7 @@ public class Slf4jCheckoutAuditLogger implements CheckoutAuditLogger {
 
     @Override
     public void logIdempotencyHit(String idempotencyKey, String orderId) {
-        log.info("checkout_idempotency_hit idempotencyKey={} orderId={}", idempotencyKey, orderId);
+        log.debug("checkout_idempotency_hit idempotencyKey={} orderId={}", idempotencyKey, orderId);
     }
 
     @Override
@@ -34,12 +34,12 @@ public class Slf4jCheckoutAuditLogger implements CheckoutAuditLogger {
 
     @Override
     public void logDebitSucceeded(String userId, double amount) {
-        log.info("checkout_debit_succeeded userId={} amount={}", userId, amount);
+        log.debug("checkout_debit_succeeded userId={} amount={}", userId, amount);
     }
 
     @Override
     public void logStockReductionSucceeded(String productId, int quantity) {
-        log.info("checkout_stock_reduction_succeeded productId={} quantity={}", productId, quantity);
+        log.debug("checkout_stock_reduction_succeeded productId={} quantity={}", productId, quantity);
     }
 
     @Override

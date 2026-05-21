@@ -27,7 +27,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.stream.Collectors;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Configuration
 @EnableMethodSecurity
@@ -62,7 +63,7 @@ public class SecurityConfig {
                                 "/actuator/prometheus"
                         ).permitAll()
                         .requestMatchers("/api/orders/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/orders/titiper/**").hasRole("TITIPER")
+                        .requestMatchers("/api/orders/titiper/**").hasAnyRole("TITIPER", "JASTIPER")
                         .requestMatchers("/api/orders/jastiper/**").hasRole("JASTIPER")
                         .anyRequest().authenticated()
                 )
@@ -97,21 +98,30 @@ public class SecurityConfig {
             return Collections.emptyList();
         }
 
-        List<String> allRoles = new ArrayList<>();
+        Set<String> normalizedRoles = new LinkedHashSet<>();
         if (roles != null) {
-            allRoles.addAll(roles);
+            for (String role : roles) {
+                addNormalizedRole(normalizedRoles, role);
+            }
         }
-        if (singleRole != null && !singleRole.isBlank()) {
-            allRoles.add(singleRole);
+        addNormalizedRole(normalizedRoles, singleRole);
+
+        if (normalizedRoles.isEmpty()) {
+            return Collections.emptyList();
         }
 
-        return allRoles.stream()
-                .map(this::normalizeRoleName)
-                .filter(role -> !role.isBlank())
-                .filter(role -> !role.equals(ROLE_PREFIX))
-                .distinct()
-                .map(SimpleGrantedAuthority::new)
-                .collect(Collectors.toList());
+        List<GrantedAuthority> authorities = new ArrayList<>(normalizedRoles.size());
+        for (String role : normalizedRoles) {
+            authorities.add(new SimpleGrantedAuthority(role));
+        }
+        return authorities;
+    }
+
+    private void addNormalizedRole(Set<String> target, String role) {
+        String normalized = normalizeRoleName(role);
+        if (!normalized.isBlank() && !normalized.equals(ROLE_PREFIX)) {
+            target.add(normalized);
+        }
     }
 
     private String normalizeRoleName(String role) {
