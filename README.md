@@ -36,9 +36,16 @@ Risk Storming juga bermanfaat karena menghubungkan diskusi arsitektur dengan kep
 
 ## Profiling
 
-![]()
+- Tool profiling mengikuti `be-wallet-transaksi`: **Apache JMeter** + **HTML Report (APDEX)**.
+- Test plan: `performance/jmeter/order-transaction.jmx`
+- Data token: `performance/jmeter/data/admin_tokens.csv` dan `performance/jmeter/data/titiper_tokens.csv`
+- Output APDEX before/after:
+  - `performance/jmeter/results/report-before/index.html`
+  - `performance/jmeter/results/report-after/index.html`
 
-![]()
+> Screenshot yang dibutuhkan:
+> 1) tabel APDEX (`APDEX (Application Performance Index)`) before vs after,
+> 2) grafik `Response Times Over Time` before vs after.
 
 ## Monitoring
 
@@ -181,3 +188,38 @@ Akses:
 - Grafana UI: `http://localhost:5004` (default `admin/admin`)
 - Loki API: `http://localhost:5006`
 - Alertmanager UI: `http://localhost:5007`
+
+## Performance Test (JMeter + APDEX)
+1. Isi token valid:
+   - `performance/jmeter/data/admin_tokens.csv`
+   - `performance/jmeter/data/titiper_tokens.csv`
+2. Jalankan baseline (before):
+```powershell
+jmeter -n -t performance/jmeter/order-transaction.jmx -l performance/jmeter/results/order-before.jtl -e -o performance/jmeter/results/report-before
+```
+3. Jalankan lagi setelah perubahan (after):
+```powershell
+jmeter -n -t performance/jmeter/order-transaction.jmx -l performance/jmeter/results/order-after.jtl -e -o performance/jmeter/results/report-after
+```
+4. Buka report:
+   - `performance/jmeter/results/report-before/index.html`
+   - `performance/jmeter/results/report-after/index.html`
+5. Ambil screenshot bagian:
+   - `APDEX (Application Performance Index)`
+   - `Response Times Over Time`
+
+### Phase 2 (Business Flow Endpoint)
+Untuk profiling endpoint inti order (`checkout`, `status`, `cancel`, `rating`), gunakan:
+
+```powershell
+jmeter -n -t performance/jmeter/order-business-flow.jmx -l performance/jmeter/results/order-business-before.jtl -e -o performance/jmeter/results/report-business-before
+```
+
+```powershell
+jmeter -n -t performance/jmeter/order-business-flow.jmx -l performance/jmeter/results/order-business-after.jtl -e -o performance/jmeter/results/report-business-after
+```
+
+Sebelum menjalankan Phase 2, isi dulu:
+- `performance/jmeter/data/jastiper_tokens.csv`
+- `performance/jmeter/data/checkout_payloads.csv`
+- `performance/jmeter/data/business_order_ids.csv`

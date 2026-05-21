@@ -38,3 +38,8 @@ out/
 
 ### Environment Variables ###
 .env
+
+### Performance Reports ###
+performance/jmeter/results/*.jtl
+performance/jmeter/results/report-*/
+jmeter.log
