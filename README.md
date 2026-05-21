@@ -36,9 +36,16 @@ Risk Storming juga bermanfaat karena menghubungkan diskusi arsitektur dengan kep
 
 ## Profiling
 
-![]()
+- Tool profiling mengikuti `be-wallet-transaksi`: **Apache JMeter** + **HTML Report (APDEX)**.
+- Test plan: `performance/jmeter/order-transaction.jmx`
+- Data token: `performance/jmeter/data/admin_tokens.csv` dan `performance/jmeter/data/titiper_tokens.csv`
+- Output APDEX before/after:
+  - `performance/jmeter/results/report-before/index.html`
+  - `performance/jmeter/results/report-after/index.html`
 
-![]()
+> Screenshot yang dibutuhkan:
+> 1) tabel APDEX (`APDEX (Application Performance Index)`) before vs after,
+> 2) grafik `Response Times Over Time` before vs after.
 
 ## Monitoring
 
@@ -91,7 +98,7 @@ Service ini memakai kombinasi HTTP + gRPC:
 
 - Inventory (HTTP): `${ORDER_INVENTORY_URL}`
   - `POST /{id}/reserve?quantity=...`
-  - `PUT /update/{id}` (untuk kompensasi release stock saat cancel/failure)
+  - `POST /{id}/release?quantity=...` (untuk kompensasi release stock saat cancel/failure)
 - Wallet Contract (gRPC): `${ORDER_WALLET_GRPC_HOST}:${ORDER_WALLET_GRPC_PORT}`
   - `checkBalance`
   - `deductBalance`
@@ -125,8 +132,7 @@ Variabel utama:
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `ORDER_INVENTORY_URL`
-- `ORDER_INVENTORY_INTERNAL_ROLE`
-- `ORDER_INVENTORY_INTERNAL_USER_ID`
+- `ORDER_INVENTORY_INTERNAL_AUTHORIZATION`
 - `ORDER_WALLET_GRPC_HOST`
 - `ORDER_WALLET_GRPC_PORT`
 - `GRPC_SERVER_INTERNAL_TOKEN`
@@ -134,6 +140,9 @@ Variabel utama:
 - `ORDER_PROFILE_URL`
 - `ORDER_PROFILE_INTERNAL_AUTHORIZATION`
 - `ORDER_SECURITY_PRINCIPAL_CLAIM`
+- `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE`
+- `MANAGEMENT_ENDPOINT_PROMETHEUS_ACCESS`
+- `MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED`
 
 ## Run with Docker Compose
 Menjalankan app + PostgreSQL untuk local testing dengan profile:
@@ -156,3 +165,61 @@ Jalankan `main`:
 ```powershell
 docker compose --profile main up --build
 ```
+
+## Monitoring (Prometheus + Grafana + Loki + Promtail + Alertmanager)
+Untuk enable metrics, set di `.env`:
+
+```text
+MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus
+MANAGEMENT_ENDPOINT_PROMETHEUS_ACCESS=unrestricted
+MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true
+```
+
+Jalankan service order terlebih dulu (`main` atau `dev`), lalu jalankan stack monitoring:
+
+```powershell
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+Akses:
+
+- Order metrics: `http://localhost:5002/actuator/prometheus` (dev) atau `http://localhost:5000/actuator/prometheus` (main)
+- Prometheus UI: `http://localhost:5005`
+- Grafana UI: `http://localhost:5004` (default `admin/admin`)
+- Loki API: `http://localhost:5006`
+- Alertmanager UI: `http://localhost:5007`
+
+## Performance Test (JMeter + APDEX)
+1. Isi token valid:
+   - `performance/jmeter/data/admin_tokens.csv`
+   - `performance/jmeter/data/titiper_tokens.csv`
+2. Jalankan baseline (before):
+```powershell
+jmeter -n -t performance/jmeter/order-transaction.jmx -l performance/jmeter/results/order-before.jtl -e -o performance/jmeter/results/report-before
+```
+3. Jalankan lagi setelah perubahan (after):
+```powershell
+jmeter -n -t performance/jmeter/order-transaction.jmx -l performance/jmeter/results/order-after.jtl -e -o performance/jmeter/results/report-after
+```
+4. Buka report:
+   - `performance/jmeter/results/report-before/index.html`
+   - `performance/jmeter/results/report-after/index.html`
+5. Ambil screenshot bagian:
+   - `APDEX (Application Performance Index)`
+   - `Response Times Over Time`
+
+### Phase 2 (Business Flow Endpoint)
+Untuk profiling endpoint inti order (`checkout`, `status`, `cancel`, `rating`), gunakan:
+
+```powershell
+jmeter -n -t performance/jmeter/order-business-flow.jmx -l performance/jmeter/results/order-business-before.jtl -e -o performance/jmeter/results/report-business-before
+```
+
+```powershell
+jmeter -n -t performance/jmeter/order-business-flow.jmx -l performance/jmeter/results/order-business-after.jtl -e -o performance/jmeter/results/report-business-after
+```
+
+Sebelum menjalankan Phase 2, isi dulu:
+- `performance/jmeter/data/jastiper_tokens.csv`
+- `performance/jmeter/data/checkout_payloads.csv`
+- `performance/jmeter/data/business_order_ids.csv`

@@ -504,15 +504,18 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void testSubmitRatingShouldFailWhenJastiperIdNonUuid() {
+    void testSubmitRatingShouldAllowWhenJastiperIdNonUuidAndDelegateToProfileGateway() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
         order.setJastiperId("jastiper-x");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThrows(IllegalArgumentException.class,
-                () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
-        verify(profileGateway, never()).submitRating(anyString(), anyString(), any(), anyString(), anyInt(), anyInt());
+        Order result = orderService.submitOrderRating("order-1", "user-1", 5, 4);
+
+        assertEquals(5, result.getJastiperRating());
+        assertEquals(4, result.getProductRating());
+        verify(profileGateway).submitRating("order-1", "user-1", "jastiper-x", "p1", 5, 4);
     }
 
     @Test

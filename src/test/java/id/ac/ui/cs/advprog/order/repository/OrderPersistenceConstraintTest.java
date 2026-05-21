@@ -17,6 +17,7 @@ class OrderPersistenceConstraintTest {
     @Test
     void shouldRejectWhenProductIdMissing() {
         Order order = new Order();
+        order.setId("order-missing-product");
         order.setUserId("u1");
         order.setJumlah(2);
         order.setAlamatPengiriman("Jakarta");
@@ -28,6 +29,7 @@ class OrderPersistenceConstraintTest {
     @Test
     void shouldRejectWhenJumlahNotPositive() {
         Order order = new Order();
+        order.setId("order-invalid-jumlah");
         order.setProductId("p1");
         order.setUserId("u1");
         order.setJumlah(0);

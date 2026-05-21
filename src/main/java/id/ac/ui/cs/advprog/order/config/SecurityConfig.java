@@ -56,7 +56,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
-                                "/swagger-ui.html"
+                                "/swagger-ui.html",
+                                "/actuator/health/**",
+                                "/actuator/info",
+                                "/actuator/prometheus"
                         ).permitAll()
                         .requestMatchers("/api/orders/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/orders/titiper/**").hasRole("TITIPER")
