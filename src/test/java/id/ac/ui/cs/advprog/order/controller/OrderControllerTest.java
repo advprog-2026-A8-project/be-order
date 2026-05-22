@@ -62,19 +62,19 @@ class OrderControllerTest {
 
     @Test
     void testCheckoutSuccess() throws Exception {
-        when(orderService.createOrder(any(Order.class), anyString())).thenReturn(order);
+        when(orderService.createOrder(any(Order.class), anyString(), any())).thenReturn(order);
         mockMvc.perform(post("/api/orders/checkout")
                         .header("Idempotency-Key", "idem-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsString(order)))
                 .andExpect(status().isOk());
 
-        verify(orderService).createOrder(any(Order.class), eq("idem-1"));
+        verify(orderService).createOrder(any(Order.class), eq("idem-1"), isNull());
     }
 
     @Test
     void testCheckoutWithoutIdempotencyHeader() throws Exception {
-        when(orderService.createOrder(any(Order.class), isNull())).thenReturn(order);
+        when(orderService.createOrder(any(Order.class), isNull(), any())).thenReturn(order);
 
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -84,7 +84,7 @@ class OrderControllerTest {
 
     @Test
     void testCheckoutWithVoucherCodeShouldPassVoucherToService() throws Exception {
-        when(orderService.createOrder(any(Order.class), isNull())).thenReturn(order);
+        when(orderService.createOrder(any(Order.class), isNull(), any())).thenReturn(order);
 
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -101,7 +101,7 @@ class OrderControllerTest {
 
     @Test
     void testCheckoutShouldTrimIdempotencyKeyBeforeCallingService() throws Exception {
-        when(orderService.createOrder(any(Order.class), eq("idem-1"))).thenReturn(order);
+        when(orderService.createOrder(any(Order.class), eq("idem-1"), any())).thenReturn(order);
 
         mockMvc.perform(post("/api/orders/checkout")
                         .header("Idempotency-Key", "  idem-1  ")
@@ -109,7 +109,7 @@ class OrderControllerTest {
                         .content(new ObjectMapper().writeValueAsString(order)))
                 .andExpect(status().isOk());
 
-        verify(orderService).createOrder(any(Order.class), eq("idem-1"));
+        verify(orderService).createOrder(any(Order.class), eq("idem-1"), isNull());
     }
 
     @Test
@@ -139,7 +139,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
                 .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
 
-        verify(orderService, never()).createOrder(any(Order.class), anyString());
+        verify(orderService, never()).createOrder(any(Order.class), anyString(), any());
     }
 
     @Test
@@ -153,7 +153,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.code").value("BUSINESS_ERROR"))
                 .andExpect(jsonPath("$.path").value("/api/orders/checkout"));
 
-        verify(orderService, never()).createOrder(any(Order.class), anyString());
+        verify(orderService, never()).createOrder(any(Order.class), anyString(), any());
     }
 
     @Test

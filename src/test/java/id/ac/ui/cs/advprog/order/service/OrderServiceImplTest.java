@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -102,7 +103,7 @@ class OrderServiceImplTest {
 
     @Test
     void testCreateOrderDelegatesToFacade() {
-        when(orderCheckoutFacade.checkout(order, null)).thenReturn(order);
+        when(orderCheckoutFacade.checkout(order, null, null)).thenReturn(order);
 
         Order result = orderService.createOrder(order);
 
@@ -111,12 +112,12 @@ class OrderServiceImplTest {
 
     @Test
     void testCreateOrderWithIdempotencyDelegatesToFacade() {
-        when(orderCheckoutFacade.checkout(order, "idem-1")).thenReturn(order);
+        when(orderCheckoutFacade.checkout(order, "idem-1", null)).thenReturn(order);
 
         Order result = orderService.createOrder(order, "idem-1");
 
         assertEquals("order-1", result.getId());
-        verify(orderCheckoutFacade).checkout(eq(order), eq("idem-1"));
+        verify(orderCheckoutFacade).checkout(eq(order), eq("idem-1"), isNull());
     }
 
     @Test

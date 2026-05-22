@@ -55,7 +55,7 @@ class OrderControllerSecurityTest {
     @Test
     void checkoutEndpointShouldAllowOwnerJastiper() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
-        when(orderService.createOrder(org.mockito.ArgumentMatchers.any(Order.class), org.mockito.ArgumentMatchers.any()))
+        when(orderService.createOrder(org.mockito.ArgumentMatchers.any(Order.class), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new Order());
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType("application/json")
@@ -89,7 +89,7 @@ class OrderControllerSecurityTest {
     @Test
     void checkoutEndpointShouldAllowOwnerTitiper() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
-        when(orderService.createOrder(org.mockito.ArgumentMatchers.any(Order.class), org.mockito.ArgumentMatchers.any()))
+        when(orderService.createOrder(org.mockito.ArgumentMatchers.any(Order.class), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new Order());
 
         mockMvc.perform(post("/api/orders/checkout")

@@ -34,6 +34,7 @@ public class OrderController {
     public ResponseEntity<Order> checkout(
             @Valid @RequestBody OrderRequest orderRequest,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             Authentication authentication
     ) {
         String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
@@ -48,7 +49,7 @@ public class OrderController {
         order.setVoucherCode(orderRequest.getVoucherCode());
         order.setStatus(OrderStatus.PENDING);
 
-        Order savedOrder = orderService.createOrder(order, normalizedIdempotencyKey);
+        Order savedOrder = orderService.createOrder(order, normalizedIdempotencyKey, authorizationHeader);
         return ResponseEntity.ok(savedOrder);
     }
 

@@ -58,9 +58,13 @@ public class InventoryRestAdapter implements InventoryGateway {
 
     @Override
     public void reserveStock(String productId, int quantity) {
+        reserveStock(productId, quantity, null);
+    }
+
+    @Override
+    public void reserveStock(String productId, int quantity, String authorizationHeader) {
         AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
-        String authorizationToken = AdapterConfigValidator
-                .validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
+        String authorizationToken = resolveAuthorizationToken(authorizationHeader);
         String reserveStockUrl = buildReserveStockUrl(productId, quantity);
         ResourceAccessException lastTransientError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -104,6 +108,14 @@ public class InventoryRestAdapter implements InventoryGateway {
             }
         }
         throw new IllegalStateException("Gagal mengakses Inventory service saat reduce stock.", lastTransientError);
+    }
+
+    private String resolveAuthorizationToken(String authorizationHeader) {
+        String preferredAuthorization = authorizationHeader;
+        if (preferredAuthorization == null || preferredAuthorization.isBlank()) {
+            preferredAuthorization = internalAuthorization;
+        }
+        return AdapterConfigValidator.validateAndNormalizeBearerToken(preferredAuthorization, ADAPTER_NAME);
     }
 
     private HttpEntity<Void> buildMutationRequest(String authorizationToken) {

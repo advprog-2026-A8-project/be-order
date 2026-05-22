@@ -50,20 +50,24 @@ public class OrderCheckoutFacade {
     private final CompensationTaskDispatcher compensationTaskDispatcher;
 
     public Order checkout(Order order) {
-        return checkout(order, null);
+        return checkout(order, null, null);
     }
 
     public Order checkout(Order order, String idempotencyKey) {
+        return checkout(order, idempotencyKey, null);
+    }
+
+    public Order checkout(Order order, String idempotencyKey, String authorizationHeader) {
         validateOrderRequest(order);
         checkoutAuditLogger.logCheckoutStarted(order, idempotencyKey);
 
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            return checkoutWithIdempotency(order, idempotencyKey.trim());
+            return checkoutWithIdempotency(order, idempotencyKey.trim(), authorizationHeader);
         }
-        return performCheckout(order, null);
+        return performCheckout(order, null, authorizationHeader);
     }
 
-    private Order checkoutWithIdempotency(Order order, String idempotencyKey) {
+    private Order checkoutWithIdempotency(Order order, String idempotencyKey, String authorizationHeader) {
         return checkoutLockManager.withIdempotencyLock(idempotencyKey, () -> {
             OrderIdempotency existingRecord = orderIdempotencyRepository.findById(idempotencyKey).orElse(null);
             if (existingRecord != null) {
@@ -77,7 +81,7 @@ public class OrderCheckoutFacade {
                 return existingOrder;
             }
 
-            Order savedOrder = performCheckout(order, idempotencyKey);
+            Order savedOrder = performCheckout(order, idempotencyKey, authorizationHeader);
             try {
                 orderIdempotencyRepository.save(new OrderIdempotency(idempotencyKey, savedOrder.getId()));
                 return savedOrder;
@@ -87,7 +91,7 @@ public class OrderCheckoutFacade {
         });
     }
 
-    private Order performCheckout(Order order, String idempotencyKey) {
+    private Order performCheckout(Order order, String idempotencyKey, String authorizationHeader) {
         return checkoutLockManager.withProductLock(order.getProductId(), () -> {
             ensureOrderId(order);
             String walletIdempotencyKey = resolveWalletIdempotencyKey(order, idempotencyKey);
@@ -118,7 +122,11 @@ public class OrderCheckoutFacade {
             checkoutAuditLogger.logDebitSucceeded(order.getUserId(), totalPrice);
 
             try {
-                inventoryGateway.reserveStock(order.getProductId(), order.getJumlah());
+                if (authorizationHeader == null || authorizationHeader.isBlank()) {
+                    inventoryGateway.reserveStock(order.getProductId(), order.getJumlah());
+                } else {
+                    inventoryGateway.reserveStock(order.getProductId(), order.getJumlah(), authorizationHeader);
+                }
                 checkoutAuditLogger.logStockReductionSucceeded(order.getProductId(), order.getJumlah());
             } catch (RuntimeException ex) {
                 throw handleInventoryReserveFailure(order, totalPrice, walletIdempotencyKey, ex);
