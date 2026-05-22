@@ -14,13 +14,11 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 @Getter
 @Setter
 @Entity
 @Table(name = "checkout_audit_tasks")
-public class CheckoutAuditTask {
+public class CheckoutAuditTask extends AbstractRetryableTask {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -35,39 +33,16 @@ public class CheckoutAuditTask {
     @Column(nullable = false, length = 32)
     private CheckoutAuditTaskStatus status;
 
-    @Column(nullable = false)
-    private Integer attemptCount;
-
-    @Column(nullable = false)
-    private LocalDateTime nextRetryAt;
-
-    @Column(length = 1000)
-    private String lastError;
-
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(nullable = false)
-    private LocalDateTime updatedAt;
-
     @PrePersist
     void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
         if (status == null) {
             status = CheckoutAuditTaskStatus.PENDING;
         }
-        if (attemptCount == null) {
-            attemptCount = 0;
-        }
-        if (nextRetryAt == null) {
-            nextRetryAt = now;
-        }
-        createdAt = now;
-        updatedAt = now;
+        initializeRetryableFields();
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        touchRetryableFields();
     }
 }

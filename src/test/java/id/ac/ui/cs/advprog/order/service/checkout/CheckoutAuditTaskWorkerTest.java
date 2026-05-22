@@ -19,8 +19,11 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,7 +46,7 @@ class CheckoutAuditTaskWorkerTest {
         ReflectionTestUtils.setField(worker, "batchSize", 20);
         ReflectionTestUtils.setField(worker, "maxRetryAttempts", 3);
         ReflectionTestUtils.setField(worker, "baseRetryDelayMs", 500L);
-        doAnswer(invocation -> {
+        lenient().doAnswer(invocation -> {
             Consumer<org.springframework.transaction.TransactionStatus> callback = invocation.getArgument(0);
             callback.accept(null);
             return null;
@@ -61,6 +64,72 @@ class CheckoutAuditTaskWorkerTest {
 
         assertEquals(CheckoutAuditTaskStatus.SUCCEEDED, task.getStatus());
         verify(checkoutAuditTaskRepository).save(task);
+    }
+
+    @Test
+    void processPendingTasksShouldSkipWhenNoTaskReady() {
+        when(checkoutAuditTaskRepository.findByStatusInAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
+                any(), any(LocalDateTime.class), any())).thenReturn(List.of());
+
+        worker.processPendingTasks();
+
+        verify(checkoutAuditTaskRepository, never()).findById(any());
+    }
+
+    @Test
+    void processPendingTasksShouldIgnoreTaskWithoutId() {
+        CheckoutAuditTask task = createTask(null, CheckoutAuditTaskStatus.PENDING, 0);
+        when(checkoutAuditTaskRepository.findByStatusInAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
+                any(), any(LocalDateTime.class), any())).thenReturn(List.of(task));
+
+        worker.processPendingTasks();
+
+        verify(checkoutAuditTaskRepository, never()).findById(any());
+    }
+
+    @Test
+    void processPendingTasksShouldRetryWhenSaveFails() {
+        CheckoutAuditTask task = createTask(2L, CheckoutAuditTaskStatus.PENDING, 0);
+        when(checkoutAuditTaskRepository.findByStatusInAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
+                any(), any(LocalDateTime.class), any())).thenReturn(List.of(task));
+        when(checkoutAuditTaskRepository.findById(2L)).thenReturn(Optional.of(task));
+        doThrow(new IllegalStateException("db down")).when(checkoutAuditTaskRepository).save(task);
+
+        worker.processPendingTasks();
+
+        assertEquals(CheckoutAuditTaskStatus.RETRY, task.getStatus());
+        assertEquals(1, task.getAttemptCount());
+        assertNotNull(task.getLastError());
+    }
+
+    @Test
+    void processPendingTasksShouldMarkFailedWhenMaxRetryReached() {
+        CheckoutAuditTask task = createTask(3L, CheckoutAuditTaskStatus.RETRY, 2);
+        when(checkoutAuditTaskRepository.findByStatusInAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
+                any(), any(LocalDateTime.class), any())).thenReturn(List.of(task));
+        when(checkoutAuditTaskRepository.findById(3L)).thenReturn(Optional.of(task));
+        doThrow(new IllegalStateException("db down")).when(checkoutAuditTaskRepository).save(task);
+
+        worker.processPendingTasks();
+
+        assertEquals(CheckoutAuditTaskStatus.FAILED, task.getStatus());
+        assertEquals(3, task.getAttemptCount());
+    }
+
+    @Test
+    void processPendingTasksShouldSkipNotReadyStatusAndFutureRetryAt() {
+        CheckoutAuditTask alreadyDone = createTask(4L, CheckoutAuditTaskStatus.SUCCEEDED, 0);
+        CheckoutAuditTask tooEarly = createTask(5L, CheckoutAuditTaskStatus.PENDING, 0);
+        tooEarly.setNextRetryAt(LocalDateTime.now().plusMinutes(5));
+        when(checkoutAuditTaskRepository.findByStatusInAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
+                any(), any(LocalDateTime.class), any())).thenReturn(List.of(alreadyDone, tooEarly));
+        when(checkoutAuditTaskRepository.findById(4L)).thenReturn(Optional.of(alreadyDone));
+        when(checkoutAuditTaskRepository.findById(5L)).thenReturn(Optional.of(tooEarly));
+
+        worker.processPendingTasks();
+
+        verify(checkoutAuditTaskRepository, never()).save(alreadyDone);
+        verify(checkoutAuditTaskRepository, never()).save(tooEarly);
     }
 
     private CheckoutAuditTask createTask(Long id, CheckoutAuditTaskStatus status, int attemptCount) {

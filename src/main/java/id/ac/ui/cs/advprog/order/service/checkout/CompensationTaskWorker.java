@@ -4,6 +4,7 @@ import id.ac.ui.cs.advprog.order.enums.CompensationTaskStatus;
 import id.ac.ui.cs.advprog.order.enums.CompensationTaskType;
 import id.ac.ui.cs.advprog.order.model.OrderCompensationTask;
 import id.ac.ui.cs.advprog.order.repository.OrderCompensationTaskRepository;
+import id.ac.ui.cs.advprog.order.service.common.RetryTaskWorkerSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -135,7 +136,7 @@ public class CompensationTaskWorker {
     private void markFailure(OrderCompensationTask task, LocalDateTime now, RuntimeException ex) {
         int nextAttempt = task.getAttemptCount() + 1;
         task.setAttemptCount(nextAttempt);
-        task.setLastError(compactErrorMessage(ex));
+        task.setLastError(RetryTaskWorkerSupport.compactErrorMessage(ex, MAX_ERROR_MESSAGE_LENGTH));
         if (nextAttempt >= Math.max(1, maxRetryAttempts)) {
             task.setStatus(CompensationTaskStatus.FAILED);
             task.setNextRetryAt(now);
@@ -143,25 +144,13 @@ public class CompensationTaskWorker {
                     task.getId(), task.getTaskType(), task.getOrderId(), nextAttempt, ex);
         } else {
             task.setStatus(CompensationTaskStatus.RETRY);
-            task.setNextRetryAt(now.plusNanos(computeBackoffMillis(nextAttempt) * 1_000_000));
+            task.setNextRetryAt(now.plusNanos(
+                    RetryTaskWorkerSupport.computeBackoffMillis(baseRetryDelayMs, nextAttempt) * 1_000_000
+            ));
             log.warn("compensation_task_retry_scheduled taskId={} taskType={} orderId={} attempt={} nextRetryAt={}",
                     task.getId(), task.getTaskType(), task.getOrderId(), nextAttempt, task.getNextRetryAt(), ex);
         }
         orderCompensationTaskRepository.save(task);
-    }
-
-    private long computeBackoffMillis(int attempt) {
-        long safeBaseDelayMs = Math.max(100L, baseRetryDelayMs);
-        long multiplier = 1L << Math.min(6, Math.max(0, attempt - 1));
-        return safeBaseDelayMs * multiplier;
-    }
-
-    private String compactErrorMessage(Throwable throwable) {
-        String rawMessage = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
-        if (rawMessage.length() <= MAX_ERROR_MESSAGE_LENGTH) {
-            return rawMessage;
-        }
-        return rawMessage.substring(0, MAX_ERROR_MESSAGE_LENGTH);
     }
 
     private double safeAmount(OrderCompensationTask task) {

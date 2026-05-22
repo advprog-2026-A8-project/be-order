@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.order.service.checkout;
 import id.ac.ui.cs.advprog.order.enums.CheckoutAuditTaskStatus;
 import id.ac.ui.cs.advprog.order.model.CheckoutAuditTask;
 import id.ac.ui.cs.advprog.order.repository.CheckoutAuditTaskRepository;
+import id.ac.ui.cs.advprog.order.service.common.RetryTaskWorkerSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -98,7 +99,7 @@ public class CheckoutAuditTaskWorker {
     private void markFailure(CheckoutAuditTask task, LocalDateTime now, RuntimeException ex) {
         int nextAttempt = task.getAttemptCount() + 1;
         task.setAttemptCount(nextAttempt);
-        task.setLastError(compactErrorMessage(ex));
+        task.setLastError(RetryTaskWorkerSupport.compactErrorMessage(ex, MAX_ERROR_MESSAGE_LENGTH));
         if (nextAttempt >= Math.max(1, maxRetryAttempts)) {
             task.setStatus(CheckoutAuditTaskStatus.FAILED);
             task.setNextRetryAt(now);
@@ -106,24 +107,12 @@ public class CheckoutAuditTaskWorker {
                     task.getId(), task.getEventType(), nextAttempt, ex);
         } else {
             task.setStatus(CheckoutAuditTaskStatus.RETRY);
-            task.setNextRetryAt(now.plusNanos(computeBackoffMillis(nextAttempt) * 1_000_000));
+            task.setNextRetryAt(now.plusNanos(
+                    RetryTaskWorkerSupport.computeBackoffMillis(baseRetryDelayMs, nextAttempt) * 1_000_000
+            ));
             log.warn("checkout_audit_retry_scheduled id={} type={} attempt={} nextRetryAt={}",
                     task.getId(), task.getEventType(), nextAttempt, task.getNextRetryAt(), ex);
         }
         checkoutAuditTaskRepository.save(task);
-    }
-
-    private long computeBackoffMillis(int attempt) {
-        long safeBase = Math.max(100L, baseRetryDelayMs);
-        long multiplier = 1L << Math.min(6, Math.max(0, attempt - 1));
-        return safeBase * multiplier;
-    }
-
-    private String compactErrorMessage(Throwable throwable) {
-        String message = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
-        if (message.length() <= MAX_ERROR_MESSAGE_LENGTH) {
-            return message;
-        }
-        return message.substring(0, MAX_ERROR_MESSAGE_LENGTH);
     }
 }

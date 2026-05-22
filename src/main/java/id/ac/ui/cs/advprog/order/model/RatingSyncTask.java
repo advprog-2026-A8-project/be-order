@@ -14,13 +14,11 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 @Getter
 @Setter
 @Entity
 @Table(name = "rating_sync_tasks")
-public class RatingSyncTask {
+public class RatingSyncTask extends AbstractRetryableTask {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -47,39 +45,16 @@ public class RatingSyncTask {
     @Column(nullable = false, length = 32)
     private RatingSyncStatus status;
 
-    @Column(nullable = false)
-    private Integer attemptCount;
-
-    @Column(nullable = false)
-    private LocalDateTime nextRetryAt;
-
-    @Column(length = 1000)
-    private String lastError;
-
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(nullable = false)
-    private LocalDateTime updatedAt;
-
     @PrePersist
     void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
         if (status == null) {
             status = RatingSyncStatus.PENDING;
         }
-        if (attemptCount == null) {
-            attemptCount = 0;
-        }
-        if (nextRetryAt == null) {
-            nextRetryAt = now;
-        }
-        createdAt = now;
-        updatedAt = now;
+        initializeRetryableFields();
     }
 
     public void touch() {
-        updatedAt = LocalDateTime.now();
+        touchRetryableFields();
     }
 
     @PreUpdate

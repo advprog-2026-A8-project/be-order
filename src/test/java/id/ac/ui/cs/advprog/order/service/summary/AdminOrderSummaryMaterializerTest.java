@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -71,6 +72,34 @@ class AdminOrderSummaryMaterializerTest {
         assertEquals(3L, response.getCompletedOrders());
         assertEquals(2L, response.getCancelledOrders());
         assertEquals(4L, response.getStatusCounts().get("PAID"));
+    }
+
+    @Test
+    void refreshShouldIgnoreRowsWithNullStatusAndNullTotal() {
+        OrderRepository.OrderStatusCountProjection nullStatus = projection(null, 10L);
+        OrderRepository.OrderStatusCountProjection nullTotal = projection("PENDING", null);
+        when(orderRepository.countGroupedByStatus()).thenReturn(List.of(nullStatus, nullTotal));
+        when(orderRepository.count()).thenReturn(1L);
+        when(snapshotRepository.findById(1)).thenReturn(Optional.of(new AdminOrderSummarySnapshot()));
+
+        materializer.refresh();
+
+        verify(snapshotRepository).save(any(AdminOrderSummarySnapshot.class));
+        verify(statusCountRepository, times(1)).save(any(AdminOrderStatusCount.class));
+    }
+
+    @Test
+    void readShouldReturnEmptyWhenNoSnapshotExists() {
+        when(snapshotRepository.findById(1)).thenReturn(Optional.empty());
+        when(statusCountRepository.findAll()).thenReturn(List.of());
+
+        AdminOrderSummaryResponse response = materializer.read();
+
+        assertEquals(0L, response.getTotalOrders());
+        assertEquals(0L, response.getActiveOrders());
+        assertEquals(0L, response.getCompletedOrders());
+        assertEquals(0L, response.getCancelledOrders());
+        assertEquals(Map.of(), response.getStatusCounts());
     }
 
     private OrderRepository.OrderStatusCountProjection projection(String status, Long total) {

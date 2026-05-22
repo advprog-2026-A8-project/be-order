@@ -15,13 +15,11 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 @Getter
 @Setter
 @Entity
 @Table(name = "order_compensation_tasks")
-public class OrderCompensationTask {
+public class OrderCompensationTask extends AbstractRetryableTask {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -58,40 +56,17 @@ public class OrderCompensationTask {
     @Column
     private String idempotencyKey;
 
-    @Column(nullable = false)
-    private Integer attemptCount;
-
-    @Column(nullable = false)
-    private LocalDateTime nextRetryAt;
-
-    @Column(length = 1000)
-    private String lastError;
-
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(nullable = false)
-    private LocalDateTime updatedAt;
-
     @PrePersist
     void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
         if (status == null) {
             status = CompensationTaskStatus.PENDING;
         }
-        if (attemptCount == null) {
-            attemptCount = 0;
-        }
-        if (nextRetryAt == null) {
-            nextRetryAt = now;
-        }
-        createdAt = now;
-        updatedAt = now;
+        initializeRetryableFields();
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        touchRetryableFields();
     }
 }
 
