@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -54,6 +55,9 @@ class OrderCheckoutFacadeTest {
 
     @Mock
     private CheckoutAuditLogger checkoutAuditLogger;
+
+    @Mock
+    private CompensationTaskDispatcher compensationTaskDispatcher;
 
     @InjectMocks
     private OrderCheckoutFacade checkoutFacade;
@@ -286,6 +290,7 @@ class OrderCheckoutFacadeTest {
                 10000.0,
                 CheckoutAuditReason.REFUND_COMPENSATION_FAILED
         );
+        verify(compensationTaskDispatcher).enqueueWalletRefund(anyString(), anyString(), anyDouble(), anyString());
     }
 
     @Test
@@ -297,6 +302,8 @@ class OrderCheckoutFacadeTest {
 
         verify(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
         verify(inventoryGateway).releaseStock("p1", 2);
+        verify(compensationTaskDispatcher, never()).enqueueWalletRefund(anyString(), anyString(), anyDouble(), anyString());
+        verify(compensationTaskDispatcher, never()).enqueueInventoryRelease(anyString(), anyString(), anyInt());
     }
 
     @Test
@@ -307,6 +314,7 @@ class OrderCheckoutFacadeTest {
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         assertTrue(ex.getMessage().contains("Kompensasi"));
+        verify(compensationTaskDispatcher).enqueueInventoryRelease(anyString(), anyString(), anyInt());
     }
 
     @Test
@@ -320,6 +328,8 @@ class OrderCheckoutFacadeTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
         assertTrue(ex.getSuppressed().length >= 2);
         verify(checkoutAuditLogger).logRefundTriggered("u1", 10000.0, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
+        verify(compensationTaskDispatcher).enqueueWalletRefund(anyString(), anyString(), anyDouble(), anyString());
+        verify(compensationTaskDispatcher).enqueueInventoryRelease(anyString(), anyString(), anyInt());
     }
 
     @Test
@@ -513,6 +523,7 @@ class OrderCheckoutFacadeTest {
 
         assertTrue(ex.getSuppressed().length >= 1);
         verify(voucherGateway).restoreVoucher(eq("HEMAT10"), anyString());
+        verify(compensationTaskDispatcher).enqueueVoucherRestore(anyString(), eq("HEMAT10"), anyString());
     }
 
     @Test
