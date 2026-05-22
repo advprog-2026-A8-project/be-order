@@ -32,7 +32,7 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void ensureSufficientBalance(String userId, double amount) {
-        UUID walletUserId = parseWalletUserId(userId); // Keep UUID validation parity with existing flow
+        UUID walletUserId = parseWalletUserId(userId); 
         CheckBalanceResponse response = callGrpcWithRetry(() ->
                 walletGrpcStubFactory.createStub().checkBalance(
                         CheckBalanceRequest.newBuilder()
@@ -48,7 +48,7 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void debit(String userId, String orderId, double amount, String idempotencyKey) {
-        UUID walletUserId = parseWalletUserId(userId); // Keep UUID validation parity with existing flow
+        UUID walletUserId = parseWalletUserId(userId); 
         WalletMutationResponse result = callGrpcWithRetry(() ->
                 walletGrpcStubFactory.createStub().deductBalance(
                         DeductBalanceRequest.newBuilder()
@@ -66,7 +66,7 @@ public class WalletRestAdapter implements WalletGateway {
 
     @Override
     public void refund(String userId, String orderId, double amount, String idempotencyKey) {
-        UUID walletUserId = parseWalletUserId(userId); // Keep UUID validation parity with existing flow
+        UUID walletUserId = parseWalletUserId(userId); 
         WalletMutationResponse result = callGrpcWithRetry(() ->
                 walletGrpcStubFactory.createStub().refundBalance(
                         RefundBalanceRequest.newBuilder()
