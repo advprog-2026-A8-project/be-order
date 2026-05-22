@@ -121,6 +121,16 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void testCreateOrderWithAuthorizationDelegatesToFacade() {
+        when(orderCheckoutFacade.checkout(order, "idem-1", "Bearer user-token")).thenReturn(order);
+
+        Order result = orderService.createOrder(order, "idem-1", "Bearer user-token");
+
+        assertEquals("order-1", result.getId());
+        verify(orderCheckoutFacade).checkout(eq(order), eq("idem-1"), eq("Bearer user-token"));
+    }
+
+    @Test
     void testFindAll() {
         when(orderRepository.findAll()).thenReturn(Arrays.asList(order));
         assertEquals(1, orderService.findAllOrders().size());

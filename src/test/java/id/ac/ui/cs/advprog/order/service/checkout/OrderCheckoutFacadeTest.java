@@ -107,6 +107,28 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldUseRequestAuthorizationHeaderForReserveWhenProvided() {
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        checkoutFacade.checkout(order, null, "Bearer request-token");
+
+        verify(inventoryGateway).reserveStock("p1", 2, "Bearer request-token");
+        verify(inventoryGateway, never()).reserveStock("p1", 2);
+    }
+
+    @Test
+    void checkoutShouldFallbackToInternalReserveWhenRequestAuthorizationBlank() {
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        checkoutFacade.checkout(order, null, "   ");
+
+        verify(inventoryGateway).reserveStock("p1", 2);
+        verify(inventoryGateway, never()).reserveStock(anyString(), anyInt(), anyString());
+    }
+
+    @Test
     void checkoutWithVoucherShouldApplyDiscountAndUseVoucher() {
         order.setVoucherCode("HEMAT10");
         when(inventoryGateway.getProduct("p1")).thenReturn(product);

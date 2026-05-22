@@ -113,6 +113,19 @@ class OrderControllerTest {
     }
 
     @Test
+    void testCheckoutShouldForwardAuthorizationHeaderToService() throws Exception {
+        when(orderService.createOrder(any(Order.class), any(), any())).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Authorization", "Bearer user-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(order)))
+                .andExpect(status().isOk());
+
+        verify(orderService).createOrder(any(Order.class), isNull(), eq("Bearer user-token"));
+    }
+
+    @Test
     void testCheckoutValidationErrorShouldReturnStructuredError() throws Exception {
         mockMvc.perform(post("/api/orders/checkout")
                         .contentType(MediaType.APPLICATION_JSON)
