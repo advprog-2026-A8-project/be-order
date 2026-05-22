@@ -12,6 +12,7 @@ import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.CompensationTaskDispatcher;
 import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
+import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import id.ac.ui.cs.advprog.order.service.rating.RatingSyncDispatcher;
 import id.ac.ui.cs.advprog.order.service.summary.AdminOrderSummaryMaterializer;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,8 @@ public class OrderServiceImpl implements OrderService {
             "Cancel gagal; voucher sudah direstore sehingga dicoba dipakai ulang.";
     private static final String MESSAGE_CANCEL_COMPENSATION_PARTIAL_FAILURE =
             "Cancel order gagal diproses penuh karena ada kegagalan kompensasi.";
+    private static final String MESSAGE_RATING_SYNC_MANUAL_REQUIRED =
+            "Rating tersimpan, tetapi sinkronisasi statistik profile gagal. Perlu sinkronisasi manual.";
     private static final String RATING_LOCK_PREFIX = "rating-lock:";
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
@@ -49,6 +52,7 @@ public class OrderServiceImpl implements OrderService {
     private final WalletGateway walletGateway;
     private final InventoryGateway inventoryGateway;
     private final VoucherGateway voucherGateway;
+    private final ProfileGateway profileGateway;
     private final RatingSyncDispatcher ratingSyncDispatcher;
     private final CheckoutLockManager checkoutLockManager;
     private final CompensationTaskDispatcher compensationTaskDispatcher;
@@ -446,6 +450,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating) {
+        return submitOrderRating(orderId, userId, jastiperRating, productRating, null);
+    }
+
+    @Override
+    public Order submitOrderRating(
+            String orderId,
+            String userId,
+            int jastiperRating,
+            int productRating,
+            String authorizationHeader
+    ) {
         String ratingLockKey = RATING_LOCK_PREFIX + orderId;
         return checkoutLockManager.withIdempotencyLock(ratingLockKey, () -> {
             Order order = findOrderById(orderId);
@@ -468,7 +483,26 @@ public class OrderServiceImpl implements OrderService {
             order.setProductRating(productRating);
             order.setRatingSubmitted(true);
             Order savedOrder = orderRepository.save(order);
-            ratingSyncDispatcher.enqueue(savedOrder);
+            try {
+                profileGateway.submitRating(
+                        savedOrder.getId(),
+                        savedOrder.getUserId(),
+                        savedOrder.getJastiperId(),
+                        savedOrder.getProductId(),
+                        savedOrder.getJastiperRating(),
+                        savedOrder.getProductRating(),
+                        authorizationHeader
+                );
+            } catch (RuntimeException profileSyncFailure) {
+                try {
+                    ratingSyncDispatcher.enqueue(savedOrder);
+                } catch (RuntimeException enqueueFailure) {
+                    IllegalStateException wrapped = new IllegalStateException(MESSAGE_RATING_SYNC_MANUAL_REQUIRED);
+                    wrapped.addSuppressed(profileSyncFailure);
+                    wrapped.addSuppressed(enqueueFailure);
+                    throw wrapped;
+                }
+            }
             return savedOrder;
         });
     }

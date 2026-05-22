@@ -47,9 +47,10 @@ public class ProfileRestAdapter implements ProfileGateway {
                              String jastiperId,
                              String productId,
                              int jastiperRating,
-                             int productRating) {
+                             int productRating,
+                             String authorizationHeader) {
         AdapterConfigValidator.validateRetryMaxAttempts(maxAttempts);
-        String authorizationToken = validateAndGetInternalAuthorization();
+        String authorizationToken = resolveAuthorizationToken(authorizationHeader);
         String normalizedJastiperId = normalizeJastiperIdForStats(jastiperId, authorizationToken);
 
         String statsUrl = UriComponentsBuilder.fromUriString(profileUrl)
@@ -87,8 +88,12 @@ public class ProfileRestAdapter implements ProfileGateway {
         return new HttpEntity<>(buildStatsPayload(jastiperId), headers);
     }
 
-    private String validateAndGetInternalAuthorization() {
-        return AdapterConfigValidator.validateAndNormalizeBearerToken(internalAuthorization, ADAPTER_NAME);
+    private String resolveAuthorizationToken(String authorizationHeader) {
+        String preferredAuthorization = authorizationHeader;
+        if (preferredAuthorization == null || preferredAuthorization.isBlank()) {
+            preferredAuthorization = internalAuthorization;
+        }
+        return AdapterConfigValidator.validateAndNormalizeBearerToken(preferredAuthorization, ADAPTER_NAME);
     }
 
     private UUID parseJastiperUuid(String jastiperId) {

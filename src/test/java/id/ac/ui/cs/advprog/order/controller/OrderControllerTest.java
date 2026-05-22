@@ -488,7 +488,7 @@ class OrderControllerTest {
         order.setStatus(OrderStatus.COMPLETED);
         order.setJastiperRating(5);
         order.setProductRating(4);
-        when(orderService.submitOrderRating("order-123", "user-def", 5, 4)).thenReturn(order);
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4, null)).thenReturn(order);
 
         mockMvc.perform(post("/api/orders/order-123/rating")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -504,7 +504,7 @@ class OrderControllerTest {
 
     @Test
     void testSubmitRatingNotFound() throws Exception {
-        when(orderService.submitOrderRating("order-123", "user-def", 5, 4)).thenReturn(null);
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4, null)).thenReturn(null);
 
         mockMvc.perform(post("/api/orders/order-123/rating")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -518,7 +518,7 @@ class OrderControllerTest {
 
     @Test
     void testSubmitRatingBadRequest() throws Exception {
-        when(orderService.submitOrderRating("order-123", "user-def", 5, 4))
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4, null))
                 .thenThrow(new IllegalArgumentException("invalid"));
 
         mockMvc.perform(post("/api/orders/order-123/rating")
@@ -545,5 +545,20 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.path").value("/api/orders/order-123/rating"));
+    }
+
+    @Test
+    void testSubmitRatingShouldForwardAuthorizationHeaderToService() throws Exception {
+        when(orderService.submitOrderRating("order-123", "user-def", 5, 4, "Bearer user-token")).thenReturn(order);
+
+        mockMvc.perform(post("/api/orders/order-123/rating")
+                        .header("Authorization", "Bearer user-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(Map.of(
+                                "userId", "user-def",
+                                "jastiperRating", 5,
+                                "productRating", 4
+                        ))))
+                .andExpect(status().isOk());
     }
 }

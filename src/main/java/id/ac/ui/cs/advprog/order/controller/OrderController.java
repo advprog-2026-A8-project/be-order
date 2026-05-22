@@ -167,12 +167,17 @@ public class OrderController {
 
     @PostMapping("/{id}/rating")
     @PreAuthorize("hasAnyRole('TITIPER','JASTIPER') and @orderAccessGuard.isOwnerOfRequestedUser(authentication, #ratingRequest.userId)")
-    public ResponseEntity<Order> submitRating(@PathVariable String id, @Valid @RequestBody RatingRequest ratingRequest) {
+    public ResponseEntity<Order> submitRating(
+            @PathVariable String id,
+            @Valid @RequestBody RatingRequest ratingRequest,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
         Order ratedOrder = orderService.submitOrderRating(
                 id,
                 ratingRequest.getUserId(),
                 ratingRequest.getJastiperRating(),
-                ratingRequest.getProductRating()
+                ratingRequest.getProductRating(),
+                authorizationHeader
         );
         return toOrderResponse(ratedOrder);
     }

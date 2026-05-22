@@ -27,4 +27,5 @@ public interface OrderService {
     Page<Order> findAdminOrdersByStatusPaged(String status, int page, int size, String sortBy, String direction);
     AdminOrderSummaryResponse getAdminOrderSummary();
     Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating);
+    Order submitOrderRating(String orderId, String userId, int jastiperRating, int productRating, String authorizationHeader);
 }

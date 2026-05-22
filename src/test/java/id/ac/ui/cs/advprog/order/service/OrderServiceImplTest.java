@@ -12,6 +12,7 @@ import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
+import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
 import id.ac.ui.cs.advprog.order.service.rating.RatingSyncDispatcher;
 import id.ac.ui.cs.advprog.order.service.summary.AdminOrderSummaryMaterializer;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +65,9 @@ class OrderServiceImplTest {
 
     @Mock
     private VoucherGateway voucherGateway;
+
+    @Mock
+    private ProfileGateway profileGateway;
 
     @Mock
     private RatingSyncDispatcher ratingSyncDispatcher;
@@ -466,17 +470,21 @@ class OrderServiceImplTest {
 
         assertEquals(5, result.getJastiperRating());
         assertEquals(4, result.getProductRating());
-        verify(ratingSyncDispatcher).enqueue(order);
+        verify(profileGateway).submitRating("order-1", "user-1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4, null);
+        verify(ratingSyncDispatcher, never()).enqueue(order);
         verify(orderRepository).save(order);
     }
 
     @Test
-    void testSubmitRatingShouldThrowWhenEnqueueFails() {
+    void testSubmitRatingShouldThrowWhenProfileSyncAndEnqueueFail() {
         order.setStatus(OrderStatus.COMPLETED);
         order.setUserId("user-1");
         order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new IllegalStateException("profile sync failed"))
+                .when(profileGateway)
+                .submitRating(anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt(), any());
         doThrow(new IllegalStateException("enqueue failed"))
                 .when(ratingSyncDispatcher)
                 .enqueue(any(Order.class));
@@ -501,6 +509,7 @@ class OrderServiceImplTest {
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.submitOrderRating("order-1", "other-user", 5, 4));
         verify(ratingSyncDispatcher, never()).enqueue(any(Order.class));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt(), any());
     }
 
     @Test
@@ -571,7 +580,8 @@ class OrderServiceImplTest {
 
         assertEquals(5, result.getJastiperRating());
         assertEquals(4, result.getProductRating());
-        verify(ratingSyncDispatcher).enqueue(order);
+        verify(profileGateway).submitRating("order-1", "user-1", "jastiper-x", "p1", 5, 4, null);
+        verify(ratingSyncDispatcher, never()).enqueue(order);
     }
 
     @Test
@@ -584,6 +594,22 @@ class OrderServiceImplTest {
         assertThrows(IllegalArgumentException.class,
                 () -> orderService.submitOrderRating("order-1", "user-1", 5, 4));
         verify(ratingSyncDispatcher, never()).enqueue(any(Order.class));
+        verify(profileGateway, never()).submitRating(anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void testSubmitRatingShouldPassAuthorizationHeaderToProfileGateway() {
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setUserId("user-1");
+        order.setJastiperId("550e8400-e29b-41d4-a716-446655440000");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Order result = orderService.submitOrderRating("order-1", "user-1", 5, 4, "Bearer user-token");
+
+        assertEquals(5, result.getJastiperRating());
+        assertEquals(4, result.getProductRating());
+        verify(profileGateway).submitRating("order-1", "user-1", "550e8400-e29b-41d4-a716-446655440000", "p1", 5, 4, "Bearer user-token");
     }
 
     @Test
