@@ -9,9 +9,11 @@ import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import id.ac.ui.cs.advprog.order.service.checkout.InventoryGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.CheckoutLockManager;
 import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
+import id.ac.ui.cs.advprog.order.service.checkout.CompensationTaskDispatcher;
 import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
-import id.ac.ui.cs.advprog.order.service.rating.ProfileGateway;
+import id.ac.ui.cs.advprog.order.service.rating.RatingSyncDispatcher;
+import id.ac.ui.cs.advprog.order.service.summary.AdminOrderSummaryMaterializer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -20,7 +22,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -38,10 +39,6 @@ public class OrderServiceImpl implements OrderService {
             "Cancel gagal; voucher sudah direstore sehingga dicoba dipakai ulang.";
     private static final String MESSAGE_CANCEL_COMPENSATION_PARTIAL_FAILURE =
             "Cancel order gagal diproses penuh karena ada kegagalan kompensasi.";
-    private static final String MESSAGE_PROFILE_SYNC_FAILED =
-            "Rating tersimpan, tetapi sinkronisasi statistik profile gagal. Perlu sinkronisasi manual.";
-    private static final String MESSAGE_PROFILE_SYNC_FAILED_ROLLBACK =
-            "Sinkronisasi rating ke profile gagal dan rollback rating lokal juga gagal.";
     private static final String RATING_LOCK_PREFIX = "rating-lock:";
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "status", "totalAmount", "userId", "jastiperId");
 
@@ -52,8 +49,10 @@ public class OrderServiceImpl implements OrderService {
     private final WalletGateway walletGateway;
     private final InventoryGateway inventoryGateway;
     private final VoucherGateway voucherGateway;
-    private final ProfileGateway profileGateway;
+    private final RatingSyncDispatcher ratingSyncDispatcher;
     private final CheckoutLockManager checkoutLockManager;
+    private final CompensationTaskDispatcher compensationTaskDispatcher;
+    private final AdminOrderSummaryMaterializer adminOrderSummaryMaterializer;
 
     private static final List<OrderStatus> ACTIVE_STATUSES = List.of(
             OrderStatus.PENDING,
@@ -205,7 +204,71 @@ public class OrderServiceImpl implements OrderService {
         RuntimeException voucherRollbackFailure = rollbackVoucherIfNeeded(order, restoreAttempt);
         RuntimeException inventoryRollbackFailure = rollbackInventoryIfNeeded(order, releaseAttempt);
         RuntimeException walletRollbackFailure = rollbackWalletIfNeeded(order, refundAmount, refundAttempt);
+        enqueueRollbackCompensationIfNeeded(
+                order,
+                refundAmount,
+                voucherRollbackFailure,
+                inventoryRollbackFailure,
+                walletRollbackFailure
+        );
         return new RollbackAttempt(voucherRollbackFailure, inventoryRollbackFailure, walletRollbackFailure);
+    }
+
+    private void enqueueRollbackCompensationIfNeeded(
+            Order order,
+            double refundAmount,
+            RuntimeException voucherRollbackFailure,
+            RuntimeException inventoryRollbackFailure,
+            RuntimeException walletRollbackFailure
+    ) {
+        if (walletRollbackFailure != null) {
+            RuntimeException enqueueFailure = tryEnqueueCompensation(
+                    "cancel_wallet_debit",
+                    () -> compensationTaskDispatcher.enqueueWalletDebit(
+                            order.getId(),
+                            order.getUserId(),
+                            refundAmount,
+                            CANCEL_DEBIT_ROLLBACK_IDEMPOTENCY_PREFIX + order.getId()
+                    )
+            );
+            attachSuppressedIfPresent(walletRollbackFailure, enqueueFailure);
+        }
+
+        if (inventoryRollbackFailure != null) {
+            RuntimeException enqueueFailure = tryEnqueueCompensation(
+                    "cancel_inventory_reserve",
+                    () -> compensationTaskDispatcher.enqueueInventoryReserve(
+                            order.getId(),
+                            order.getProductId(),
+                            order.getJumlah()
+                    )
+            );
+            attachSuppressedIfPresent(inventoryRollbackFailure, enqueueFailure);
+        }
+
+        if (voucherRollbackFailure != null && hasRestorableVoucher(order)) {
+            RuntimeException enqueueFailure = tryEnqueueCompensation(
+                    "cancel_voucher_use",
+                    () -> compensationTaskDispatcher.enqueueVoucherUse(order.getId(), order.getVoucherCode().trim())
+            );
+            attachSuppressedIfPresent(voucherRollbackFailure, enqueueFailure);
+        }
+    }
+
+    private RuntimeException tryEnqueueCompensation(String taskName, Runnable enqueueAction) {
+        try {
+            enqueueAction.run();
+            return null;
+        } catch (RuntimeException enqueueEx) {
+            log.warn("enqueue_cancel_compensation_failed task={} reason={}", taskName, enqueueEx.getMessage(), enqueueEx);
+            return enqueueEx;
+        }
+    }
+
+    private void attachSuppressedIfPresent(RuntimeException target, RuntimeException suppressed) {
+        if (target != null && suppressed != null) {
+            target.addSuppressed(suppressed);
+        }
     }
 
     private RuntimeException rollbackVoucherIfNeeded(Order order, CompensationAttempt restoreAttempt) {
@@ -345,38 +408,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public AdminOrderSummaryResponse getAdminOrderSummary() {
-        List<Order> orders = orderRepository.findAll();
-        long totalOrders = orders.size();
-        long activeOrders = 0L;
-        long completedOrders = 0L;
-        long cancelledOrders = 0L;
-        Map<String, Long> statusCounts = new java.util.HashMap<>();
-
-        for (Order order : orders) {
-            OrderStatus status = order.getStatus();
-            if (status == null) {
-                continue;
-            }
-            String statusName = status.name();
-            statusCounts.merge(statusName, 1L, Long::sum);
-            if (ACTIVE_STATUSES.contains(status)) {
-                activeOrders++;
-            }
-            if (status == OrderStatus.COMPLETED) {
-                completedOrders++;
-            }
-            if (status == OrderStatus.CANCELLED) {
-                cancelledOrders++;
-            }
-        }
-
-        return new AdminOrderSummaryResponse(
-                totalOrders,
-                activeOrders,
-                completedOrders,
-                cancelledOrders,
-                statusCounts
-        );
+        return adminOrderSummaryMaterializer.read();
     }
 
     private OrderStatus parseOrderStatus(String status) {
@@ -431,43 +463,9 @@ public class OrderServiceImpl implements OrderService {
             order.setProductRating(productRating);
             order.setRatingSubmitted(true);
             Order savedOrder = orderRepository.save(order);
-
-            try {
-                profileGateway.submitRating(
-                        savedOrder.getId(),
-                        savedOrder.getUserId(),
-                        savedOrder.getJastiperId(),
-                        savedOrder.getProductId(),
-                        jastiperRating,
-                        productRating
-                );
-            } catch (RuntimeException ex) {
-                log.error(
-                        "submit_rating_profile_sync_failed orderId={} userId={} jastiperId={}",
-                        savedOrder.getId(),
-                        savedOrder.getUserId(),
-                        savedOrder.getJastiperId(),
-                        ex
-                );
-                throw rollbackRatingAndBuildException(savedOrder, ex);
-            }
-
+            ratingSyncDispatcher.enqueue(savedOrder);
             return savedOrder;
         });
-    }
-
-    private IllegalStateException rollbackRatingAndBuildException(Order savedOrder, RuntimeException profileSyncFailure) {
-        savedOrder.setJastiperRating(null);
-        savedOrder.setProductRating(null);
-        savedOrder.setRatingSubmitted(false);
-        try {
-            orderRepository.save(savedOrder);
-            return new IllegalStateException(MESSAGE_PROFILE_SYNC_FAILED, profileSyncFailure);
-        } catch (RuntimeException rollbackFailure) {
-            IllegalStateException wrapped = new IllegalStateException(MESSAGE_PROFILE_SYNC_FAILED_ROLLBACK, profileSyncFailure);
-            wrapped.addSuppressed(rollbackFailure);
-            return wrapped;
-        }
     }
 
     private void validateRatingRange(int jastiperRating, int productRating) {

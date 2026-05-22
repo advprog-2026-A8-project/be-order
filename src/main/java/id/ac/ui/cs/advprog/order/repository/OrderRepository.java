@@ -4,6 +4,7 @@ import id.ac.ui.cs.advprog.order.model.Order;
 import id.ac.ui.cs.advprog.order.enums.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -17,4 +18,12 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     List<Order> findByJastiperIdAndStatusIn(String jastiperId, Collection<OrderStatus> statuses);
     List<Order> findByStatusIn(Collection<OrderStatus> statuses);
     Page<Order> findByStatusIn(Collection<OrderStatus> statuses, Pageable pageable);
+
+    interface OrderStatusCountProjection {
+        String getStatus();
+        Long getTotal();
+    }
+
+    @Query(value = "SELECT status AS status, COUNT(*) AS total FROM orders WHERE status IS NOT NULL GROUP BY status", nativeQuery = true)
+    List<OrderStatusCountProjection> countGroupedByStatus();
 }

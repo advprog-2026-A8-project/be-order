@@ -7,6 +7,7 @@ import id.ac.ui.cs.advprog.order.model.OrderIdempotency;
 import id.ac.ui.cs.advprog.order.repository.OrderIdempotencyRepository;
 import id.ac.ui.cs.advprog.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.dao.DataIntegrityViolationException;
 
@@ -14,6 +15,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class OrderCheckoutFacade {
     private static final String MESSAGE_ORDER_NULL = "Order tidak boleh null";
@@ -45,6 +47,7 @@ public class OrderCheckoutFacade {
     private final OrderIdempotencyRepository orderIdempotencyRepository;
     private final CheckoutLockManager checkoutLockManager;
     private final CheckoutAuditLogger checkoutAuditLogger;
+    private final CompensationTaskDispatcher compensationTaskDispatcher;
 
     public Order checkout(Order order) {
         return checkout(order, null);
@@ -225,11 +228,23 @@ public class OrderCheckoutFacade {
             );
         } catch (RuntimeException refundEx) {
             logRefundReason(order, totalPrice, CheckoutAuditReason.REFUND_COMPENSATION_FAILED);
+            RuntimeException enqueueFailure = tryEnqueueWithSuppressed(
+                    "wallet_refund",
+                    () -> compensationTaskDispatcher.enqueueWalletRefund(
+                            order.getId(),
+                            order.getUserId(),
+                            totalPrice,
+                            walletIdempotencyKey + REFUND_SUFFIX
+                    )
+            );
             IllegalStateException wrapped = new IllegalStateException(
                     MESSAGE_INVENTORY_RESERVE_FAILED_REFUND_FAILED,
                     reserveException
             );
             wrapped.addSuppressed(refundEx);
+            if (enqueueFailure != null) {
+                wrapped.addSuppressed(enqueueFailure);
+            }
             return wrapped;
         }
     }
@@ -269,6 +284,8 @@ public class OrderCheckoutFacade {
             }
         }
 
+        enqueueCompensationIfNeeded(order, totalPrice, walletIdempotencyKey, refundFailure, releaseFailure, voucherRestoreFailure);
+
         if (refundFailure == null && releaseFailure == null && voucherRestoreFailure == null) {
             return new IllegalStateException(
                     MESSAGE_ORDER_SAVE_FAILED_COMPENSATION_DONE + " Root cause: " + extractRootCauseSummary(orderSaveException),
@@ -291,6 +308,68 @@ public class OrderCheckoutFacade {
             wrapped.addSuppressed(voucherRestoreFailure);
         }
         return wrapped;
+    }
+
+    private void enqueueCompensationIfNeeded(
+            Order order,
+            double totalPrice,
+            String walletIdempotencyKey,
+            RuntimeException refundFailure,
+            RuntimeException releaseFailure,
+            RuntimeException voucherRestoreFailure
+    ) {
+        if (refundFailure != null) {
+            RuntimeException enqueueFailure = tryEnqueueWithSuppressed(
+                    "wallet_refund",
+                    () -> compensationTaskDispatcher.enqueueWalletRefund(
+                            order.getId(),
+                            order.getUserId(),
+                            totalPrice,
+                            walletIdempotencyKey + REFUND_SUFFIX
+                    )
+            );
+            attachSuppressedIfPresent(refundFailure, enqueueFailure);
+        }
+
+        if (releaseFailure != null) {
+            RuntimeException enqueueFailure = tryEnqueueWithSuppressed(
+                    "inventory_release",
+                    () -> compensationTaskDispatcher.enqueueInventoryRelease(
+                            order.getId(),
+                            order.getProductId(),
+                            order.getJumlah()
+                    )
+            );
+            attachSuppressedIfPresent(releaseFailure, enqueueFailure);
+        }
+
+        if (voucherRestoreFailure != null) {
+            RuntimeException enqueueFailure = tryEnqueueWithSuppressed(
+                    "voucher_restore",
+                    () -> compensationTaskDispatcher.enqueueVoucherRestore(
+                            order.getId(),
+                            order.getVoucherCode().trim(),
+                            VOUCHER_RESTORE_IDEMPOTENCY_PREFIX + order.getId()
+                    )
+            );
+            attachSuppressedIfPresent(voucherRestoreFailure, enqueueFailure);
+        }
+    }
+
+    private RuntimeException tryEnqueueWithSuppressed(String taskName, Runnable taskAction) {
+        try {
+            taskAction.run();
+            return null;
+        } catch (RuntimeException enqueueEx) {
+            log.warn("enqueue_compensation_failed task={} reason={}", taskName, enqueueEx.getMessage(), enqueueEx);
+            return enqueueEx;
+        }
+    }
+
+    private void attachSuppressedIfPresent(RuntimeException target, RuntimeException suppressed) {
+        if (target != null && suppressed != null) {
+            target.addSuppressed(suppressed);
+        }
     }
 
     private void logRefundReason(Order order, double totalPrice, String reason) {
