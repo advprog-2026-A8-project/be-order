@@ -6,7 +6,7 @@ public final class RetryTaskWorkerSupport {
 
     public static long computeBackoffMillis(long baseDelayMs, int attempt) {
         long safeBase = Math.clamp(baseDelayMs, 100L, Long.MAX_VALUE);
-        int boundedAttempt = Math.clamp(attempt - 1, 0, 6);
+        int boundedAttempt = (int) Math.clamp((long) attempt - 1L, 0L, 6L);
         long multiplier = 1L << boundedAttempt;
         return safeBase * multiplier;
     }
