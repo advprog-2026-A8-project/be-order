@@ -19,6 +19,7 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -294,6 +295,21 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutShouldWrapWhenRefundAndEnqueueAlsoFailAfterStockReductionFailure() {
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        doThrow(new IllegalStateException("inventory down")).when(inventoryGateway).reserveStock("p1", 2);
+        doThrow(new IllegalStateException("refund down"))
+                .when(walletGateway).refund(anyString(), anyString(), anyDouble(), anyString());
+        doThrow(new IllegalStateException("enqueue down"))
+                .when(compensationTaskDispatcher).enqueueWalletRefund(anyString(), anyString(), anyDouble(), anyString());
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order));
+
+        assertTrue(ex.getSuppressed().length >= 2);
+        verify(compensationTaskDispatcher).enqueueWalletRefund(anyString(), anyString(), anyDouble(), anyString());
+    }
+
+    @Test
     void checkoutShouldCompensateRefundAndReleaseWhenSaveFailsAfterReserve() {
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         doThrow(new IllegalStateException("db down")).when(orderRepository).save(any(Order.class));
@@ -499,6 +515,25 @@ class OrderCheckoutFacadeTest {
     }
 
     @Test
+    void checkoutWithIdempotencyShouldThrowWhenRaceWinnerOrderRecordExistsButOrderMissing() {
+        when(orderIdempotencyRepository.findById("idem-race-order-missing"))
+                .thenReturn(java.util.Optional.empty())
+                .thenReturn(java.util.Optional.of(new OrderIdempotency("idem-race-order-missing", "order-404")));
+        when(inventoryGateway.getProduct("p1")).thenReturn(product);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order saved = invocation.getArgument(0);
+            saved.setId("order-101");
+            return saved;
+        });
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(orderIdempotencyRepository)
+                .save(any(OrderIdempotency.class));
+        when(orderRepository.findById("order-404")).thenReturn(java.util.Optional.empty());
+
+        assertThrows(IllegalStateException.class, () -> checkoutFacade.checkout(order, "idem-race-order-missing"));
+    }
+
+    @Test
     void checkoutWithBlankIdempotencyKeyShouldFallbackToNonIdempotentFlow() {
         when(inventoryGateway.getProduct("p1")).thenReturn(product);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -620,5 +655,106 @@ class OrderCheckoutFacadeTest {
         String result = (String) method.invoke(checkoutFacade, explicitOrder, "   ");
 
         assertEquals("wallet-order-order-xyz", result);
+    }
+
+    @Test
+    void tryEnqueueWithSuppressedShouldReturnNullWhenTaskSucceeds() throws Exception {
+        RuntimeException result = invokeTryEnqueue("wallet_refund", () -> {
+            // no-op
+        });
+
+        assertNull(result);
+    }
+
+    @Test
+    void tryEnqueueWithSuppressedShouldReturnExceptionWhenTaskFails() throws Exception {
+        RuntimeException result = invokeTryEnqueue("wallet_refund", () -> {
+            throw new IllegalStateException("queue down");
+        });
+
+        assertEquals("queue down", result.getMessage());
+    }
+
+    @Test
+    void attachSuppressedIfPresentShouldAttachAndIgnoreNulls() throws Exception {
+        RuntimeException target = new RuntimeException("target");
+        RuntimeException suppressed = new RuntimeException("suppressed");
+
+        invokeAttachSuppressed(target, suppressed);
+        assertEquals(1, target.getSuppressed().length);
+
+        invokeAttachSuppressed(target, null);
+        assertEquals(1, target.getSuppressed().length);
+
+        invokeAttachSuppressed(null, suppressed);
+    }
+
+    @Test
+    void extractRootCauseSummaryShouldReturnDeepestCauseAndMessage() throws Exception {
+        Throwable deepest = new IllegalStateException("deepest");
+        Throwable wrapped = new RuntimeException("top", new IllegalArgumentException("mid", deepest));
+
+        String result = invokeExtractRootCauseSummary(wrapped);
+
+        assertEquals("IllegalStateException: deepest", result);
+    }
+
+    @Test
+    void extractRootCauseSummaryShouldReturnClassNameWhenMessageMissing() throws Exception {
+        Throwable root = new RuntimeException((String) null);
+
+        String result = invokeExtractRootCauseSummary(root);
+
+        assertEquals("RuntimeException", result);
+    }
+
+    @Test
+    void extractRootCauseSummaryShouldReturnClassNameWhenMessageBlank() throws Exception {
+        Throwable root = new RuntimeException("   ");
+
+        String result = invokeExtractRootCauseSummary(root);
+
+        assertEquals("RuntimeException", result);
+    }
+
+    @Test
+    void extractRootCauseSummaryShouldHandleSelfReferencingCauseSafely() throws Exception {
+        class SelfCauseException extends RuntimeException {
+            private SelfCauseException(String message) {
+                super(message);
+            }
+
+            @Override
+            public synchronized Throwable getCause() {
+                return this;
+            }
+        }
+
+        RuntimeException selfCause = new SelfCauseException("self");
+
+        String result = invokeExtractRootCauseSummary(selfCause);
+
+        assertEquals("SelfCauseException: self", result);
+    }
+
+    private RuntimeException invokeTryEnqueue(String taskName, Runnable action) throws Exception {
+        Method method = OrderCheckoutFacade.class
+                .getDeclaredMethod("tryEnqueueWithSuppressed", String.class, Runnable.class);
+        method.setAccessible(true);
+        return (RuntimeException) method.invoke(checkoutFacade, taskName, action);
+    }
+
+    private void invokeAttachSuppressed(RuntimeException target, RuntimeException suppressed) throws Exception {
+        Method method = OrderCheckoutFacade.class
+                .getDeclaredMethod("attachSuppressedIfPresent", RuntimeException.class, RuntimeException.class);
+        method.setAccessible(true);
+        method.invoke(checkoutFacade, target, suppressed);
+    }
+
+    private String invokeExtractRootCauseSummary(Throwable throwable) throws Exception {
+        Method method = OrderCheckoutFacade.class
+                .getDeclaredMethod("extractRootCauseSummary", Throwable.class);
+        method.setAccessible(true);
+        return (String) method.invoke(checkoutFacade, throwable);
     }
 }

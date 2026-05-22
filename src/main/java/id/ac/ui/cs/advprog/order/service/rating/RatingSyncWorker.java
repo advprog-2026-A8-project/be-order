@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.order.service.rating;
 import id.ac.ui.cs.advprog.order.enums.RatingSyncStatus;
 import id.ac.ui.cs.advprog.order.model.RatingSyncTask;
 import id.ac.ui.cs.advprog.order.repository.RatingSyncTaskRepository;
+import id.ac.ui.cs.advprog.order.service.common.RetryTaskWorkerSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -72,32 +73,20 @@ public class RatingSyncWorker {
     private void markFailure(RatingSyncTask task, LocalDateTime now, RuntimeException ex) {
         int nextAttempt = task.getAttemptCount() + 1;
         task.setAttemptCount(nextAttempt);
-        task.setLastError(compactErrorMessage(ex));
+        task.setLastError(RetryTaskWorkerSupport.compactErrorMessage(ex, MAX_ERROR_MESSAGE_LENGTH));
         if (nextAttempt >= Math.max(1, maxRetryAttempts)) {
             task.setStatus(RatingSyncStatus.FAILED);
             task.setNextRetryAt(now);
             log.error("rating_sync_failed_permanently orderId={} attempts={}", task.getOrderId(), nextAttempt, ex);
         } else {
             task.setStatus(RatingSyncStatus.RETRY);
-            task.setNextRetryAt(now.plusNanos(computeBackoffMillis(nextAttempt) * 1_000_000));
+            task.setNextRetryAt(now.plusNanos(
+                    RetryTaskWorkerSupport.computeBackoffMillis(baseRetryDelayMs, nextAttempt) * 1_000_000
+            ));
             log.warn("rating_sync_retry_scheduled orderId={} attempt={} nextRetryAt={}",
                     task.getOrderId(), nextAttempt, task.getNextRetryAt(), ex);
         }
         ratingSyncTaskRepository.save(task);
-    }
-
-    private long computeBackoffMillis(int attempt) {
-        long safeBase = Math.max(100L, baseRetryDelayMs);
-        long multiplier = 1L << Math.min(6, Math.max(0, attempt - 1));
-        return safeBase * multiplier;
-    }
-
-    private String compactErrorMessage(Throwable throwable) {
-        String message = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
-        if (message.length() <= MAX_ERROR_MESSAGE_LENGTH) {
-            return message;
-        }
-        return message.substring(0, MAX_ERROR_MESSAGE_LENGTH);
     }
 }
 

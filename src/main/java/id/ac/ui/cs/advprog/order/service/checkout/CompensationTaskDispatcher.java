@@ -20,13 +20,7 @@ public class CompensationTaskDispatcher {
         upsert(
                 createTaskKey(CompensationTaskType.WALLET_REFUND, orderId, idempotencyKey),
                 CompensationTaskType.WALLET_REFUND,
-                orderId,
-                userId,
-                null,
-                null,
-                amount,
-                null,
-                idempotencyKey
+                CompensationTaskValues.wallet(orderId, userId, amount, idempotencyKey)
         );
     }
 
@@ -35,13 +29,7 @@ public class CompensationTaskDispatcher {
         upsert(
                 createTaskKey(CompensationTaskType.WALLET_DEBIT, orderId, idempotencyKey),
                 CompensationTaskType.WALLET_DEBIT,
-                orderId,
-                userId,
-                null,
-                null,
-                amount,
-                null,
-                idempotencyKey
+                CompensationTaskValues.wallet(orderId, userId, amount, idempotencyKey)
         );
     }
 
@@ -50,13 +38,7 @@ public class CompensationTaskDispatcher {
         upsert(
                 createTaskKey(CompensationTaskType.INVENTORY_RESERVE, orderId, productId + ":" + quantity),
                 CompensationTaskType.INVENTORY_RESERVE,
-                orderId,
-                null,
-                productId,
-                quantity,
-                null,
-                null,
-                null
+                CompensationTaskValues.inventory(orderId, productId, quantity)
         );
     }
 
@@ -65,13 +47,7 @@ public class CompensationTaskDispatcher {
         upsert(
                 createTaskKey(CompensationTaskType.INVENTORY_RELEASE, orderId, productId + ":" + quantity),
                 CompensationTaskType.INVENTORY_RELEASE,
-                orderId,
-                null,
-                productId,
-                quantity,
-                null,
-                null,
-                null
+                CompensationTaskValues.inventory(orderId, productId, quantity)
         );
     }
 
@@ -80,13 +56,7 @@ public class CompensationTaskDispatcher {
         upsert(
                 createTaskKey(CompensationTaskType.VOUCHER_USE, orderId, voucherCode),
                 CompensationTaskType.VOUCHER_USE,
-                orderId,
-                null,
-                null,
-                null,
-                null,
-                voucherCode,
-                null
+                CompensationTaskValues.voucher(orderId, voucherCode, null)
         );
     }
 
@@ -95,38 +65,22 @@ public class CompensationTaskDispatcher {
         upsert(
                 createTaskKey(CompensationTaskType.VOUCHER_RESTORE, orderId, idempotencyKey),
                 CompensationTaskType.VOUCHER_RESTORE,
-                orderId,
-                null,
-                null,
-                null,
-                null,
-                voucherCode,
-                idempotencyKey
+                CompensationTaskValues.voucher(orderId, voucherCode, idempotencyKey)
         );
     }
 
-    private void upsert(
-            String taskKey,
-            CompensationTaskType taskType,
-            String orderId,
-            String userId,
-            String productId,
-            Integer quantity,
-            Double amount,
-            String voucherCode,
-            String idempotencyKey
-    ) {
+    private void upsert(String taskKey, CompensationTaskType taskType, CompensationTaskValues values) {
         OrderCompensationTask task = orderCompensationTaskRepository.findByTaskKey(taskKey)
                 .orElseGet(OrderCompensationTask::new);
         task.setTaskKey(taskKey);
         task.setTaskType(taskType);
-        task.setOrderId(orderId);
-        task.setUserId(userId);
-        task.setProductId(productId);
-        task.setQuantity(quantity);
-        task.setAmount(amount);
-        task.setVoucherCode(voucherCode);
-        task.setIdempotencyKey(idempotencyKey);
+        task.setOrderId(values.orderId());
+        task.setUserId(values.userId());
+        task.setProductId(values.productId());
+        task.setQuantity(values.quantity());
+        task.setAmount(values.amount());
+        task.setVoucherCode(values.voucherCode());
+        task.setIdempotencyKey(values.idempotencyKey());
         task.setStatus(CompensationTaskStatus.PENDING);
         task.setAttemptCount(0);
         task.setLastError(null);
@@ -138,5 +92,32 @@ public class CompensationTaskDispatcher {
         String safeOrderId = orderId == null ? "unknown-order" : orderId.trim();
         String safeDiscriminator = discriminator == null ? "none" : discriminator.trim();
         return type.name() + ":" + safeOrderId + ":" + safeDiscriminator;
+    }
+
+    private record CompensationTaskValues(
+            String orderId,
+            String userId,
+            String productId,
+            Integer quantity,
+            Double amount,
+            String voucherCode,
+            String idempotencyKey
+    ) {
+        private static CompensationTaskValues wallet(
+                String orderId,
+                String userId,
+                Double amount,
+                String idempotencyKey
+        ) {
+            return new CompensationTaskValues(orderId, userId, null, null, amount, null, idempotencyKey);
+        }
+
+        private static CompensationTaskValues inventory(String orderId, String productId, Integer quantity) {
+            return new CompensationTaskValues(orderId, null, productId, quantity, null, null, null);
+        }
+
+        private static CompensationTaskValues voucher(String orderId, String voucherCode, String idempotencyKey) {
+            return new CompensationTaskValues(orderId, null, null, null, null, voucherCode, idempotencyKey);
+        }
     }
 }

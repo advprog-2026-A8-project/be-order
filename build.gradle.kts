@@ -97,6 +97,17 @@ tasks.test {
 
 tasks.jacocoTestReport {
     dependsOn(tasks.test)
+    classDirectories.setFrom(
+        files(
+            classDirectories.files.map {
+                fileTree(it) {
+                    exclude(
+                        "id/ac/ui/cs/advprog/bewallettransaksi/grpc/**"
+                    )
+                }
+            }
+        )
+    )
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -109,6 +120,7 @@ sonar {
         property("sonar.organization", "advprog-2026-a8-project")
         property("sonar.host.url", "https://sonarcloud.io")
         property("sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml")
+        property("sonar.coverage.exclusions", "**/id/ac/ui/cs/advprog/bewallettransaksi/grpc/**")
     }
 }
 
