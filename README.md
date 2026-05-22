@@ -34,28 +34,48 @@ Risk Storming juga bermanfaat karena menghubungkan diskusi arsitektur dengan kep
 
 ![alt text](assets/CodeDiagram.png)
 
-## Profiling
+### Before Profiling
+![alt text](assets/JMBefore1.png)
 
-- Tool profiling mengikuti `be-wallet-transaksi`: **Apache JMeter** + **HTML Report (APDEX)**.
-- Test plan: `performance/jmeter/order-transaction.jmx`
-- Data token: `performance/jmeter/data/admin_tokens.csv` dan `performance/jmeter/data/titiper_tokens.csv`
-- Output APDEX before/after:
-  - `performance/jmeter/results/report-before/index.html`
-  - `performance/jmeter/results/report-after/index.html`
+![alt text](assets/JMBefore2.png)
 
-> Screenshot yang dibutuhkan:
-> 1) tabel APDEX (`APDEX (Application Performance Index)`) before vs after,
-> 2) grafik `Response Times Over Time` before vs after.
+![alt text](assets/JProfiler1.png)
+
+![alt text](assets/ProfilingBefore.png)
+
+Kita mengidentifikasi bottleneck utama teridentifikasi pada path findTitiperActiveOrders. Bottleneck sekunder teridentifikasi pada path findTitiperOrderHistory, getAdminOrderSummary, dan checkoutWithIdempotency sebagai bagian dari checkout flow.
+
+### After Profiling
+![alt text](assets/JMAfter1.png)
+
+![alt text](assets/JMAfter2.png)
+
+![alt text](assets/ProfilingAfter.png)
+
+Profiling pada proyek ini menggunakan pendekatan **workload-driven profiling** dengan **JMeter sebagai sumber utama pengukuran**.  
+Artinya, keputusan optimasi dilakukan berdasarkan metrik performa saat skenario beban dijalankan, bukan hanya inspeksi kode statis.
+
+Justifikasi metode profiling:
+1. JMeter merepresentasikan trafik nyata (read + mutation + contract flow) sehingga bottleneck terlihat pada kondisi concurrent request.
+2. Hasil numerik JMeter (latency, throughput, error rate, percentile) dipakai sebagai baseline sebelum optimasi dan pembanding setelah optimasi.
+3. Monitoring (Prometheus/Grafana/Loki) digunakan sebagai pendukung observasi runtime untuk memvalidasi perilaku sistem saat test berjalan.
+
+Dengan pendekatan ini, perubahan performa dapat dijustifikasi secara kuantitatif berdasarkan benchmark yang konsisten.
 
 ## Monitoring
 
-![]()
+![alt text](assets/Prometheus.png)
 
-![]()
+![alt text](assets/Granafa.png)
 
 
 # BE Order
 PIC: Derrick - 2406351440
+
+# Deployment
+Link Service: `http://ec2-54-86-86-195.compute-1.amazonaws.com:5000`  
+Link Grafana: `http://ec2-54-86-86-195.compute-1.amazonaws.com:5004`  
+Link Prometheus: `http://ec2-54-86-86-195.compute-1.amazonaws.com:5005`
 
 Backend service untuk orkestrasi transaksi order pada sistem JaStip Online Nasional (JSON): checkout, lifecycle status order, cancel + refund trigger, rating submission, history/monitoring, serta integrasi lintas service (inventory, wallet, voucher, profile).
 
