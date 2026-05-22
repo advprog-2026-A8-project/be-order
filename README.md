@@ -43,7 +43,7 @@ Risk Storming juga bermanfaat karena menghubungkan diskusi arsitektur dengan kep
 
 ![alt text](assets/ProfilingBefore.png)
 
-Kita mengidentifikasi bottleneck utama teridentifikasi pada path findTitiperActiveOrders. Bottleneck sekunder teridentifikasi pada path findTitiperOrderHistory, getAdminOrderSummary, dan checkoutWithIdempotency sebagai bagian dari checkout flow.
+Temuan sebelum optimasi menunjukkan bottleneck utama pada path `findTitiperActiveOrders`, dengan bottleneck sekunder pada `findTitiperOrderHistory`, `getAdminOrderSummary`, dan `checkoutWithIdempotency` sebagai bagian dari checkout flow.
 
 ### After Profiling
 ![alt text](assets/JMAfter1.png)
@@ -52,21 +52,39 @@ Kita mengidentifikasi bottleneck utama teridentifikasi pada path findTitiperActi
 
 ![alt text](assets/ProfilingAfter.png)
 
-Profiling pada proyek ini menggunakan pendekatan **workload-driven profiling** dengan **JMeter sebagai sumber utama pengukuran**.  
-Artinya, keputusan optimasi dilakukan berdasarkan metrik performa saat skenario beban dijalankan, bukan hanya inspeksi kode statis.
+### Justifikasi Proses Profiling
+Profiling menggunakan pendekatan **workload-driven profiling**:
+1. **JMeter** dipakai untuk membentuk beban nyata (kombinasi read + write + flow bisnis), lalu mengukur APDEX, latency, throughput, dan error rate.
+2. **JProfiler** dipakai untuk menemukan hotspot di level kode (call tree/hot spots), sehingga optimasi tidak berbasis asumsi.
+3. **Before/After benchmark** dijalankan dengan skenario data yang setara agar hasil perbandingan valid.
 
-Justifikasi metode profiling:
-1. JMeter merepresentasikan trafik nyata (read + mutation + contract flow) sehingga bottleneck terlihat pada kondisi concurrent request.
-2. Hasil numerik JMeter (latency, throughput, error rate, percentile) dipakai sebagai baseline sebelum optimasi dan pembanding setelah optimasi.
-3. Monitoring (Prometheus/Grafana/Loki) digunakan sebagai pendukung observasi runtime untuk memvalidasi perilaku sistem saat test berjalan.
+### Analisis Improvement yang Dilakukan
+Berdasarkan hasil profiling, perbaikan difokuskan pada path yang paling dominan di hotspot:
+1. `findTitiperActiveOrders` sebagai bottleneck utama.
+2. `findTitiperOrderHistory` dan `getAdminOrderSummary` sebagai bottleneck sekunder pada alur read.
+3. `checkoutWithIdempotency` pada alur checkout untuk menekan overhead saat write path aktif.
 
-Dengan pendekatan ini, perubahan performa dapat dijustifikasi secara kuantitatif berdasarkan benchmark yang konsisten.
+Hasil setelah optimasi menunjukkan penurunan error pada flow bisnis dan peningkatan skor APDEX, sehingga peningkatan performa dapat dijustifikasi secara kuantitatif.
 
 ## Monitoring
 
 ![alt text](assets/Prometheus.png)
 
 ![alt text](assets/Granafa.png)
+
+### Justifikasi Desain Monitoring
+Desain monitoring menggunakan kombinasi **Prometheus + Grafana + Loki + Promtail + Alertmanager** karena:
+1. **Prometheus** efektif untuk time-series metrics aplikasi Spring Boot (`/actuator/prometheus`) dan cocok untuk observasi latency/throughput/resource.
+2. **Grafana** menyediakan visualisasi operasional yang mudah dibandingkan antar waktu (panel throughput, p95 latency, heap, CPU).
+3. **Loki + Promtail** melengkapi observability dengan log terstruktur untuk investigasi ketika terjadi error spike.
+4. **Alertmanager** menyiapkan jalur notifikasi saat rule alert diaktifkan.
+
+### Contoh Penggunaan Monitoring
+Contoh query Prometheus yang dipakai saat observasi:
+1. `sum(rate(http_server_requests_seconds_count{job=~"order-app-.*"}[1m])) by (uri)` untuk throughput per endpoint.
+2. `histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=~"order-app-.*"}[1m])) by (le, uri))` untuk p95 latency.
+3. `sum(jvm_memory_used_bytes{job=~"order-app-.*", area="heap"}) by (job)` untuk heap usage.
+4. `process_cpu_usage{job=~"order-app-.*"}` untuk CPU usage proses aplikasi.
 
 
 # BE Order
