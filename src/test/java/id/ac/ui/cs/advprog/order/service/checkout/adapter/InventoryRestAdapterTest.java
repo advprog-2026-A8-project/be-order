@@ -4,9 +4,11 @@ import id.ac.ui.cs.advprog.order.dto.InventoryResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -106,6 +108,45 @@ class InventoryRestAdapterTest {
                 .thenThrow(new ResourceAccessException("timeout-2"));
 
         assertThrows(IllegalStateException.class, () -> adapter.reserveStock("p1", 2));
+    }
+
+    @Test
+    void reserveStockShouldPreferRequestAuthorizationHeader() {
+        ArgumentCaptor<HttpEntity<Void>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+
+        adapter.reserveStock("p1", 2, "Bearer request-token");
+
+        verify(restTemplate).exchange(
+                eq("http://localhost:8081/api/products/p1/reserve?quantity=2"),
+                eq(HttpMethod.POST),
+                entityCaptor.capture(),
+                eq(Void.class)
+        );
+        assertEquals("Bearer request-token", entityCaptor.getValue().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
+    }
+
+    @Test
+    void reserveStockShouldFallbackToInternalAuthorizationWhenRequestHeaderBlank() {
+        ArgumentCaptor<HttpEntity<Void>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+
+        adapter.reserveStock("p1", 2, "   ");
+
+        verify(restTemplate).exchange(
+                eq("http://localhost:8081/api/products/p1/reserve?quantity=2"),
+                eq(HttpMethod.POST),
+                entityCaptor.capture(),
+                eq(Void.class)
+        );
+        assertEquals("Bearer internal-token", entityCaptor.getValue().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
+    }
+
+    @Test
+    void reserveStockShouldFailFastWhenRequestAuthorizationInvalidBearerFormat() {
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> adapter.reserveStock("p1", 1, "not-a-bearer-token")
+        );
+        assertTrue(exception.getMessage().contains("Bearer"));
     }
 
     @Test
