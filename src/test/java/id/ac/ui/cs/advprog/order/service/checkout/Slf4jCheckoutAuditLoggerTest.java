@@ -4,12 +4,13 @@ import id.ac.ui.cs.advprog.order.model.Order;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.mockito.Mockito.mock;
 
 class Slf4jCheckoutAuditLoggerTest {
 
     @Test
     void allAuditMethodsShouldBeInvokable() {
-        Slf4jCheckoutAuditLogger logger = new Slf4jCheckoutAuditLogger();
+        Slf4jCheckoutAuditLogger logger = new Slf4jCheckoutAuditLogger(mock(CheckoutAuditTaskDispatcher.class));
         Order order = new Order();
         order.setProductId("p1");
         order.setUserId("u1");

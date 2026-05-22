@@ -8,13 +8,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Slf4j
 @Component
@@ -28,6 +32,9 @@ public class CompensationTaskWorker {
     private final WalletGateway walletGateway;
     private final InventoryGateway inventoryGateway;
     private final VoucherGateway voucherGateway;
+    private final TransactionTemplate transactionTemplate;
+    @Qualifier("compensationTaskExecutor")
+    private final Executor compensationTaskExecutor;
 
     @Value("${order.compensation.batch-size:20}")
     private int batchSize;
@@ -39,7 +46,6 @@ public class CompensationTaskWorker {
     private long baseRetryDelayMs;
 
     @Scheduled(fixedDelayString = "${order.compensation.worker-delay-ms:3000}")
-    @Transactional
     public void processPendingTasks() {
         int effectiveBatchSize = Math.max(1, batchSize);
         LocalDateTime now = LocalDateTime.now();
@@ -49,21 +55,49 @@ public class CompensationTaskWorker {
                         now,
                         PageRequest.of(0, effectiveBatchSize)
                 );
+        List<CompletableFuture<Void>> futures = new ArrayList<>(tasks.size());
         for (OrderCompensationTask task : tasks) {
-            processTask(task, now);
+            Long taskId = task.getId();
+            if (taskId == null) {
+                continue;
+            }
+            futures.add(CompletableFuture.runAsync(
+                    () -> processTaskById(taskId),
+                    compensationTaskExecutor
+            ));
+        }
+        for (CompletableFuture<Void> future : futures) {
+            try {
+                future.join();
+            } catch (RuntimeException ex) {
+                log.warn("compensation_task_future_failed reason={}", ex.getMessage(), ex);
+            }
         }
     }
 
-    private void processTask(OrderCompensationTask task, LocalDateTime now) {
-        try {
-            executeTask(task);
-            task.setStatus(CompensationTaskStatus.SUCCEEDED);
-            task.setLastError(null);
-            task.setNextRetryAt(now);
-            orderCompensationTaskRepository.save(task);
-        } catch (RuntimeException ex) {
-            markFailure(task, now, ex);
-        }
+    private void processTaskById(Long taskId) {
+        transactionTemplate.executeWithoutResult(status -> {
+            OrderCompensationTask task = orderCompensationTaskRepository.findById(taskId).orElse(null);
+            if (task == null) {
+                return;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            if (!READY_STATUSES.contains(task.getStatus())) {
+                return;
+            }
+            if (task.getNextRetryAt() != null && task.getNextRetryAt().isAfter(now)) {
+                return;
+            }
+            try {
+                executeTask(task);
+                task.setStatus(CompensationTaskStatus.SUCCEEDED);
+                task.setLastError(null);
+                task.setNextRetryAt(now);
+                orderCompensationTaskRepository.save(task);
+            } catch (RuntimeException ex) {
+                markFailure(task, now, ex);
+            }
+        });
     }
 
     private void executeTask(OrderCompensationTask task) {

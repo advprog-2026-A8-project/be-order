@@ -120,6 +120,8 @@ Service ini memakai kombinasi HTTP + gRPC:
   - `V5__add_voucher_applied_column.sql`
   - `V6__add_rating_sync_tasks.sql`
   - `V7__add_order_compensation_tasks.sql`
+  - `V8__add_admin_order_summary_read_model.sql`
+  - `V9__add_checkout_audit_tasks.sql`
 
 ## Configuration
 Copy `env.example` menjadi `.env`, lalu isi value sesuai environment.
@@ -150,6 +152,13 @@ Variabel utama:
 - `ORDER_COMPENSATION_BATCH_SIZE`
 - `ORDER_COMPENSATION_RETRY_MAX_ATTEMPTS`
 - `ORDER_COMPENSATION_RETRY_BASE_DELAY_MS`
+- `ORDER_COMPENSATION_PARALLELISM`
+- `ORDER_SUMMARY_WORKER_DELAY_MS`
+- `ORDER_AUDIT_WORKER_DELAY_MS`
+- `ORDER_AUDIT_BATCH_SIZE`
+- `ORDER_AUDIT_RETRY_MAX_ATTEMPTS`
+- `ORDER_AUDIT_RETRY_BASE_DELAY_MS`
+- `ORDER_AUDIT_PARALLELISM`
 - `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE`
 - `MANAGEMENT_ENDPOINT_PROMETHEUS_ACCESS`
 - `MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED`

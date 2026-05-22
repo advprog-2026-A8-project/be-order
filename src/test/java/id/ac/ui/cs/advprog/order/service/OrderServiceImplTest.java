@@ -13,6 +13,7 @@ import id.ac.ui.cs.advprog.order.service.checkout.OrderCheckoutFacade;
 import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.RatingSyncDispatcher;
+import id.ac.ui.cs.advprog.order.service.summary.AdminOrderSummaryMaterializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -71,6 +72,9 @@ class OrderServiceImplTest {
 
     @Mock
     private CompensationTaskDispatcher compensationTaskDispatcher;
+
+    @Mock
+    private AdminOrderSummaryMaterializer adminOrderSummaryMaterializer;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -573,14 +577,11 @@ class OrderServiceImplTest {
 
     @Test
     void testGetAdminOrderSummary() {
-        Order paid = new Order();
-        paid.setStatus(OrderStatus.PAID);
-        Order completed = new Order();
-        completed.setStatus(OrderStatus.COMPLETED);
-        Order cancelled = new Order();
-        cancelled.setStatus(OrderStatus.CANCELLED);
-
-        when(orderRepository.findAll()).thenReturn(List.of(paid, completed, cancelled));
+        AdminOrderSummaryResponse mocked = new AdminOrderSummaryResponse(
+                3L, 1L, 1L, 1L,
+                java.util.Map.of("PAID", 1L, "COMPLETED", 1L, "CANCELLED", 1L)
+        );
+        when(adminOrderSummaryMaterializer.read()).thenReturn(mocked);
 
         AdminOrderSummaryResponse summary = orderService.getAdminOrderSummary();
 
@@ -595,7 +596,9 @@ class OrderServiceImplTest {
 
     @Test
     void testGetAdminOrderSummaryWhenNoOrders() {
-        when(orderRepository.findAll()).thenReturn(List.of());
+        when(adminOrderSummaryMaterializer.read()).thenReturn(
+                new AdminOrderSummaryResponse(0L, 0L, 0L, 0L, java.util.Map.of())
+        );
 
         AdminOrderSummaryResponse summary = orderService.getAdminOrderSummary();
 

@@ -13,6 +13,7 @@ import id.ac.ui.cs.advprog.order.service.checkout.CompensationTaskDispatcher;
 import id.ac.ui.cs.advprog.order.service.checkout.VoucherGateway;
 import id.ac.ui.cs.advprog.order.service.checkout.WalletGateway;
 import id.ac.ui.cs.advprog.order.service.rating.RatingSyncDispatcher;
+import id.ac.ui.cs.advprog.order.service.summary.AdminOrderSummaryMaterializer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -21,7 +22,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -52,6 +52,7 @@ public class OrderServiceImpl implements OrderService {
     private final RatingSyncDispatcher ratingSyncDispatcher;
     private final CheckoutLockManager checkoutLockManager;
     private final CompensationTaskDispatcher compensationTaskDispatcher;
+    private final AdminOrderSummaryMaterializer adminOrderSummaryMaterializer;
 
     private static final List<OrderStatus> ACTIVE_STATUSES = List.of(
             OrderStatus.PENDING,
@@ -407,38 +408,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public AdminOrderSummaryResponse getAdminOrderSummary() {
-        List<Order> orders = orderRepository.findAll();
-        long totalOrders = orders.size();
-        long activeOrders = 0L;
-        long completedOrders = 0L;
-        long cancelledOrders = 0L;
-        Map<String, Long> statusCounts = new java.util.HashMap<>();
-
-        for (Order order : orders) {
-            OrderStatus status = order.getStatus();
-            if (status == null) {
-                continue;
-            }
-            String statusName = status.name();
-            statusCounts.merge(statusName, 1L, Long::sum);
-            if (ACTIVE_STATUSES.contains(status)) {
-                activeOrders++;
-            }
-            if (status == OrderStatus.COMPLETED) {
-                completedOrders++;
-            }
-            if (status == OrderStatus.CANCELLED) {
-                cancelledOrders++;
-            }
-        }
-
-        return new AdminOrderSummaryResponse(
-                totalOrders,
-                activeOrders,
-                completedOrders,
-                cancelledOrders,
-                statusCounts
-        );
+        return adminOrderSummaryMaterializer.read();
     }
 
     private OrderStatus parseOrderStatus(String status) {
