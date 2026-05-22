@@ -276,7 +276,7 @@ class OrderControllerSecurityTest {
     @Test
     void ratingEndpointShouldAllowOwnerJastiperRole() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
-        when(orderService.submitOrderRating("order-1", "jastiper-1", 5, 4)).thenReturn(new Order());
+        when(orderService.submitOrderRating("order-1", "jastiper-1", 5, 4, null)).thenReturn(new Order());
         mockMvc.perform(post("/api/orders/order-1/rating")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -291,7 +291,7 @@ class OrderControllerSecurityTest {
     @Test
     void ratingEndpointShouldAllowTitiperRole() throws Exception {
         lenient().when(orderRepository.findById(anyString())).thenReturn(Optional.empty());
-        when(orderService.submitOrderRating("order-1", "user-1", 5, 4)).thenReturn(new Order());
+        when(orderService.submitOrderRating("order-1", "user-1", 5, 4, null)).thenReturn(new Order());
 
         mockMvc.perform(post("/api/orders/order-1/rating")
                         .contentType("application/json")
